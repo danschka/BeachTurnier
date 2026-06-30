@@ -111,9 +111,9 @@ begin
 
   select *
   into v_tournament
-  from public.shared_tournaments
-  where share_code = p_share_code
-    and status = 'active';
+  from public.shared_tournaments st
+  where st.share_code = p_share_code
+    and st.status = 'active';
 
   if v_tournament.id is null then
     raise exception 'Shared lobby not found';

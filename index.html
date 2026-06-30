@@ -53,107 +53,119 @@
 
       <section class="panel tab-panel is-visible" id="setup">
         <div class="section-title">
-          <h2>Teilnehmer</h2>
-          <div class="button-row">
-            <button id="samplePlayersButton" type="button">Beispiel füllen</button>
-            <button id="clearAllButton" class="danger-button" type="button">Alles zurücksetzen</button>
-          </div>
-        </div>
-        <div class="tournament-manager">
-          <div>
-            <span>Host-ID</span>
-            <strong id="hostIdLabel"></strong>
-          </div>
-          <div>
-            <span>Modus</span>
-            <strong id="modeLabel">Lokales Turnier</strong>
-          </div>
-          <label>
-            Aktives Turnier
-            <select id="tournamentSelect"></select>
-          </label>
-          <label>
-            Turniername
-            <input id="tournamentNameInput" type="text" autocomplete="off">
-          </label>
+          <h2>Setup</h2>
           <div class="button-row">
             <button id="newTournamentButton" type="button">Neues Turnier</button>
             <button id="newSharedTournamentButton" type="button">Neue Shared Lobby</button>
-            <button id="renameTournamentButton" type="button">Umbenennen</button>
-            <button id="deleteTournamentButton" class="danger-button" type="button">Turnier löschen</button>
+            <button id="samplePlayersButton" type="button">Beispiel füllen</button>
           </div>
         </div>
-        <div class="shared-lobby-box" id="sharedLobbyBox">
-          <div>
-            <h3 id="sharedLobbyTitle">Shared Lobby</h3>
-            <p id="sharedLobbyText">Alle Personen mit dem Link können dieses Turnier vollständig bearbeiten.</p>
-          </div>
-          <div class="button-row">
-            <button id="copyShareLinkButton" type="button">Link zum Turnier kopieren</button>
-            <button id="publishLocalButton" type="button">Lokales Turnier veröffentlichen</button>
-            <button id="leaveSharedLobbyButton" type="button">Shared Lobby verlassen</button>
-          </div>
-        </div>
-        <div class="logo-manager">
-          <div>
-            <h3>Logo</h3>
-            <p>Standardmäßig wird das vorhandene Wespen-Logo verwendet. Alternativ kann pro Turnier ein eigenes Logo hinterlegt werden.</p>
-          </div>
-          <label>
-            Logo-Link
-            <input id="logoUrlInput" type="url" inputmode="url" placeholder="https://.../logo.png">
-          </label>
-          <label class="file-button">
-            Logo-Datei wählen
-            <input id="logoFileInput" type="file" accept="image/*">
-          </label>
-          <div class="button-row">
-            <button id="saveLogoUrlButton" type="button">Link verwenden</button>
-            <button id="resetLogoButton" type="button">Standardlogo</button>
-          </div>
-        </div>
-        <div class="setup-grid">
-          <form id="playerForm" class="player-form">
-            <label>
-              Name
-              <input id="playerName" type="text" autocomplete="off" placeholder="Vorname Nachname">
-            </label>
-            <button class="primary-button" type="submit">Teilnehmer hinzufügen</button>
-          </form>
-          <div class="import-box">
-            <label for="csvInput">CSV aus Google Forms importieren</label>
-            <textarea id="csvInput" rows="7" placeholder="Name&#10;Alex Müller&#10;Samira Becker"></textarea>
-            <div class="button-row">
-              <button id="importCsvButton" type="button">CSV importieren</button>
-              <button id="downloadTemplateButton" type="button">Vorlage laden</button>
+
+        <div class="setup-layout">
+          <div class="setup-main">
+            <div class="setup-card tournament-manager">
+              <div class="setup-status-grid">
+                <div>
+                  <span>Modus</span>
+                  <strong id="modeLabel">Lokales Turnier</strong>
+                </div>
+                <div>
+                  <span>Host-ID</span>
+                  <strong id="hostIdLabel"></strong>
+                </div>
+              </div>
+              <div class="setup-form-grid">
+                <label>
+                  Aktives Turnier
+                  <select id="tournamentSelect"></select>
+                </label>
+                <label>
+                  Turniername
+                  <input id="tournamentNameInput" type="text" autocomplete="off">
+                </label>
+              </div>
+              <div class="button-row setup-toolbar">
+                <button id="renameTournamentButton" type="button">Umbenennen</button>
+              </div>
+            </div>
+
+            <div class="shared-lobby-box" id="sharedLobbyBox">
+              <div>
+                <h3 id="sharedLobbyTitle">Shared Lobby</h3>
+                <p id="sharedLobbyText">Alle Personen mit dem Link können dieses Turnier vollständig bearbeiten.</p>
+              </div>
+              <div class="button-row">
+                <button id="copyShareLinkButton" type="button">Link kopieren</button>
+                <button id="publishLocalButton" type="button">Online veröffentlichen</button>
+                <button id="leaveSharedLobbyButton" type="button">Verlassen</button>
+              </div>
+            </div>
+
+            <div class="setup-card player-entry-card">
+              <form id="playerForm" class="player-form">
+                <label>
+                  Teilnehmer hinzufügen
+                  <input id="playerName" type="text" autocomplete="off" placeholder="Vorname Nachname">
+                </label>
+                <button class="primary-button" type="submit">Hinzufügen</button>
+              </form>
+            </div>
+
+            <div class="setup-card player-list-card">
+              <div class="section-title compact-title">
+                <h3>Teilnehmerliste <span id="playerCount">0/12</span></h3>
+                <button id="clearAllButton" class="danger-button" type="button">Liste leeren</button>
+              </div>
+              <ol class="player-list" id="playerList"></ol>
             </div>
           </div>
-        </div>
-        <div class="self-registration">
-          <div>
-            <h3>Selbstanmeldung per Link</h3>
-            <p>Erstelle ein kostenloses Formular mit einer Namensfrage, teile den Link und importiere danach die Antworten als CSV.</p>
-          </div>
-          <label>
-            Anmeldelink
-            <input id="registrationLink" type="url" inputmode="url" placeholder="https://forms.gle/...">
-          </label>
-          <div class="button-row">
-            <button id="saveRegistrationLinkButton" type="button">Link speichern</button>
-            <button id="copyRegistrationLinkButton" type="button">Link kopieren</button>
-            <button id="openRegistrationLinkButton" type="button">Link öffnen</button>
-          </div>
-        </div>
-        <div class="split">
-          <div>
-            <h3>Teilnehmerliste <span id="playerCount">0/12</span></h3>
-            <ol class="player-list" id="playerList"></ol>
-          </div>
-          <div class="action-card">
-            <h3>Turnier starten</h3>
-            <p>Bei genau 12 Teilnehmern werden 6 Teams ausgelost und automatisch auf zwei Gruppen verteilt.</p>
-            <button class="primary-button wide" id="generateTournamentButton" type="button">Teams und Gruppen auslosen</button>
-          </div>
+
+          <aside class="setup-side">
+            <div class="action-card">
+              <h3>Turnier starten</h3>
+              <p>Bereit bei genau 12 Teilnehmern.</p>
+              <button class="primary-button wide" id="generateTournamentButton" type="button">Teams und Gruppen auslosen</button>
+            </div>
+
+            <details class="setup-card advanced-options">
+              <summary>Erweiterte Optionen</summary>
+              <div class="advanced-stack">
+                <div class="logo-manager">
+                  <h3>Logo</h3>
+                  <label>
+                    Logo-Link
+                    <input id="logoUrlInput" type="url" inputmode="url" placeholder="https://.../logo.png">
+                  </label>
+                  <label class="file-button">
+                    Logo-Datei wählen
+                    <input id="logoFileInput" type="file" accept="image/*">
+                  </label>
+                  <div class="button-row">
+                    <button id="saveLogoUrlButton" type="button">Link verwenden</button>
+                    <button id="resetLogoButton" type="button">Standardlogo</button>
+                  </div>
+                </div>
+
+                <div class="self-registration">
+                  <h3>Anmeldelink</h3>
+                  <label>
+                    Link
+                    <input id="registrationLink" type="url" inputmode="url" placeholder="https://forms.gle/...">
+                  </label>
+                  <div class="button-row">
+                    <button id="saveRegistrationLinkButton" type="button">Speichern</button>
+                    <button id="copyRegistrationLinkButton" type="button">Kopieren</button>
+                    <button id="openRegistrationLinkButton" type="button">Öffnen</button>
+                  </div>
+                </div>
+
+                <div class="danger-zone">
+                  <h3>Gefahrenbereich</h3>
+                  <button id="deleteTournamentButton" class="danger-button wide" type="button">Turnier löschen</button>
+                </div>
+              </div>
+            </details>
+          </aside>
         </div>
       </section>
 

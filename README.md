@@ -6,9 +6,18 @@ Eine offline nutzbare Web-App für ein Beachvolleyballturnier mit 12 Spielern, 6
 
 Öffne `index.html` direkt im Browser. Es ist keine Installation und kein Server nötig.
 
+## Kostenlos auf GitHub Pages hosten
+
+Dieses Projekt ist eine reine statische Website. Es braucht fuer GitHub Pages keinen Build-Schritt, keinen Server und keinen kostenpflichtigen Dienst.
+
+1. Repository zu GitHub pushen.
+2. In GitHub unter `Settings` -> `Pages` als Source `GitHub Actions` auswaehlen.
+3. Auf `main` pushen oder den Workflow `Deploy to GitHub Pages` manuell starten.
+4. Die App wird aus dem Repository-Root veroeffentlicht.
+
 ## Funktionen
 
-- Teilnehmer manuell erfassen oder per CSV importieren
+- Teilnehmer manuell erfassen
 - Selbstanmeldung über einen gespeicherten Formular-Link
 - Mehrere eigene Turniere pro Browserprofil verwalten
 - Turniertitel und Logo pro Turnier anpassen
@@ -22,16 +31,6 @@ Eine offline nutzbare Web-App für ein Beachvolleyballturnier mit 12 Spielern, 6
 - CSV-, PDF- und Backup-Export
 - Druckansicht, Beamer-Modus und Dunkelmodus
 - Speicherung im Local Storage
-
-## CSV-Import
-
-Die App liest eine Spalte `Name`, `Spieler`, `Teilnehmer` oder `Vorname`. Eine Google-Forms-Datei mit einer Spalte `Name` funktioniert direkt.
-
-```csv
-Name
-Alex Müller
-Samira Becker
-```
 
 ## Hinweise
 
@@ -70,15 +69,17 @@ Die App unterstützt zwei Modi:
 Der Share-Link sieht so aus:
 
 ```text
-https://<github-pages-domain>/<projektname>/?lobby=<share_code>
+https://<github-pages-domain>/<projektname>/#lobby=<share_code>
 ```
+
+Alte Links mit `?lobby=<share_code>` werden weiterhin gelesen und nach dem Oeffnen automatisch auf die neue Hash-Form umgestellt. Die Hash-Form ist fuer statische Hosts wie GitHub Pages robuster, weil sie keine Serverroute benoetigt.
 
 Der Link ist ein Bearbeitungslink. Wer ihn erhält, kann die Lobby vollständig verändern, inklusive Teilnehmer, Ergebnisse, Einstellungen, Spielplan und Löschen. Teile ihn nur mit vertrauenswürdigen Personen.
 
 ### Supabase einrichten
 
 1. Supabase-Projekt erstellen.
-2. Unter Auth die Anonymous Sign-ins aktivieren.
+2. Unter Auth die Anonymous Sign-ins aktivieren. Ohne diese Einstellung kann kein Browser einer Lobby beitreten.
 3. Die SQL-Migration `supabase/migrations/001_shared_tournaments.sql` im SQL Editor oder per Supabase CLI ausführen.
 4. Realtime für die Tabelle `shared_tournaments` ist in der Migration enthalten.
 5. `.env.example` als Orientierung nutzen:
@@ -98,6 +99,16 @@ window.WWS_SUPABASE_CONFIG = {
 ```
 
 Der Supabase Anon-Key ist öffentlich nutzbar. Niemals den Service-Role-Key in dieses Projekt, in GitHub Pages oder in den Browser schreiben.
+
+### Supabase-Fehler beheben
+
+GitHub Pages hostet nur HTML, CSS und JavaScript. Es fuehrt keine SQL-Migrationen in Supabase aus. Wenn beim Oeffnen eines Shared-Links diese Meldung erscheint:
+
+```text
+column reference "share_code" is ambiguous
+```
+
+dann laeuft in Supabase noch die alte Version der Funktion `join_shared_lobby`. Fuehre im Supabase SQL Editor den Inhalt von `supabase/migrations/002_fix_join_shared_lobby_ambiguity.sql` aus. Danach die Seite neu laden und den Shared-Link erneut im Inkognito-Fenster testen.
 
 ### Datenmodell und Zugriff
 
@@ -173,6 +184,6 @@ Kostenlos und nur per Link klappt am einfachsten mit Google Forms:
 2. Eine Pflichtfrage `Name` anlegen.
 3. Bei den Einstellungen keine Anmeldung erzwingen.
 4. Den Formularlink nur an die Spieler senden.
-5. Antworten als CSV herunterladen und in der App importieren.
+5. Angemeldete Spieler manuell in die Teilnehmerliste übernehmen.
 
 Der Link ist nicht öffentlich gelistet, aber kein Passwortschutz. Wer den Link weitergeleitet bekommt, kann sich ebenfalls eintragen.

@@ -96,10 +96,14 @@
   }
 
   async function joinSharedTournamentByCode(shareCode) {
+    const normalizedShareCode = normalizeShareCode(shareCode);
+    if (!normalizedShareCode) {
+      throw new Error("Der Shared-Lobby-Link enthaelt keinen gueltigen Lobby-Code.");
+    }
     await ensureAnonymousSession();
     const supabase = getClient();
     const { data, error } = await supabase.rpc("join_shared_lobby", {
-      p_share_code: shareCode,
+      p_share_code: normalizedShareCode,
     });
     if (error) throw error;
     if (!data?.[0]) throw new Error("Dieses geteilte Turnier existiert nicht mehr oder der Link ist ungültig.");
@@ -174,8 +178,27 @@
 
   function getShareLink(sharedTournament) {
     const url = new URL(window.location.href);
-    url.searchParams.set("lobby", sharedTournament.shareCode);
+    url.search = "";
+    url.hash = `lobby=${encodeURIComponent(sharedTournament.shareCode)}`;
     return url.toString();
+  }
+
+  function normalizeShareCode(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      const url = new URL(raw);
+      return (
+        url.searchParams.get("lobby") ||
+        new URLSearchParams(url.hash.replace(/^#/, "")).get("lobby") ||
+        ""
+      ).trim();
+    } catch {
+      return raw
+        .replace(/^#?lobby=/i, "")
+        .split(/[&#?]/)[0]
+        .trim();
+    }
   }
 
   window.SharedTournamentStore = {
@@ -188,6 +211,7 @@
     subscribeToSharedTournament,
     unsubscribeFromSharedTournament,
     getShareLink,
+    normalizeShareCode,
     sharedToActiveTournament,
   };
 })();

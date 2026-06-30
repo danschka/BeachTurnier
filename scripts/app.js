@@ -1,6 +1,7 @@
 (function () {
   const DEFAULT_TOURNAMENT_NAME = "1. WWS-Herren BeachCup";
   const DEFAULT_LOGO_SRC = BeachCupStore.DEFAULT_LOGO_SRC || "assets/wilde-wespen-logo.jpeg";
+  const SHARED_SAVE_DELAY = 750;
   const SAMPLE_PLAYERS = [
     "Alex Müller",
     "Samira Becker",
@@ -23,6 +24,10 @@
   let sharedError = "";
   const $ = (selector) => document.querySelector(selector);
   let scoreRenderTimer = null;
+  let sharedSaveTimer = null;
+  let sharedSaveInFlight = false;
+  let sharedSaveQueued = false;
+  let sharedSaveGeneration = 0;
 
   function refreshActive() {
     if (mode === "shared" && activeShared) {
@@ -42,7 +47,7 @@
     settings = BeachCupStore.getSettings();
   }
 
-  function saveActive() {
+  function saveActive(options = {}) {
     if (mode === "shared") {
       activeShared = {
         ...activeShared,
@@ -50,19 +55,71 @@
         name: active.name || DEFAULT_TOURNAMENT_NAME,
         state: snapshotActiveForShared(),
       };
-      SharedTournamentStore.saveSharedTournament(active)
-        .then((shared) => {
-          activeShared = shared;
-          if (mode === "shared") {
-            active = SharedTournamentStore.sharedToActiveTournament(activeShared);
-          }
-        })
-        .catch((error) => {
-          alert(`Shared Lobby konnte nicht gespeichert werden: ${error.message}`);
-        });
+      scheduleSharedSave(Boolean(options.immediate));
       return;
     }
     active = BeachCupStore.saveTournament(active);
+  }
+
+  function scheduleSharedSave(immediate = false) {
+    window.clearTimeout(sharedSaveTimer);
+    if (immediate) {
+      flushSharedSave();
+      return;
+    }
+    sharedSaveTimer = window.setTimeout(flushSharedSave, SHARED_SAVE_DELAY);
+  }
+
+  function resetSharedSaveQueue() {
+    sharedSaveGeneration += 1;
+    window.clearTimeout(sharedSaveTimer);
+    sharedSaveTimer = null;
+    sharedSaveInFlight = false;
+    sharedSaveQueued = false;
+  }
+
+  function flushSharedSave() {
+    window.clearTimeout(sharedSaveTimer);
+    sharedSaveTimer = null;
+    if (mode !== "shared" || !activeShared) return;
+    if (sharedSaveInFlight) {
+      sharedSaveQueued = true;
+      return;
+    }
+
+    sharedSaveInFlight = true;
+    const tournamentToSave = cloneTournament(active);
+    const saveGeneration = sharedSaveGeneration;
+    SharedTournamentStore.saveSharedTournament(tournamentToSave)
+      .then((shared) => {
+        if (saveGeneration !== sharedSaveGeneration) return;
+        const hasQueuedChanges = sharedSaveQueued;
+        activeShared = hasQueuedChanges
+          ? { ...shared, name: active.name || DEFAULT_TOURNAMENT_NAME, state: snapshotActiveForShared() }
+          : shared;
+        if (mode === "shared") {
+          active.version = shared.version;
+          if (!hasQueuedChanges) {
+            active = SharedTournamentStore.sharedToActiveTournament(activeShared);
+          }
+        }
+      })
+      .catch((error) => {
+        if (saveGeneration !== sharedSaveGeneration) return;
+        alert(`Shared Lobby konnte nicht gespeichert werden: ${error.message}`);
+      })
+      .finally(() => {
+        if (saveGeneration !== sharedSaveGeneration) return;
+        sharedSaveInFlight = false;
+        if (sharedSaveQueued && mode === "shared") {
+          sharedSaveQueued = false;
+          scheduleSharedSave(true);
+        }
+      });
+  }
+
+  function cloneTournament(tournament) {
+    return JSON.parse(JSON.stringify(tournament));
   }
 
   function snapshotActiveForShared() {
@@ -116,18 +173,9 @@
       active.tournament = null;
       persistAndRender();
     });
-    $("#importCsvButton").addEventListener("click", () => {
-      const names = parseCsvNames($("#csvInput").value);
-      active.players = uniqueNames([...active.players, ...names]).slice(0, 12);
-      active.tournament = null;
-      persistAndRender();
-    });
-    $("#downloadTemplateButton").addEventListener("click", () => {
-      downloadText("google-forms-vorlage.csv", "Name\n");
-    });
     $("#saveRegistrationLinkButton").addEventListener("click", () => {
       active.registrationLink = $("#registrationLink").value.trim();
-      saveActive();
+      saveActive({ immediate: true });
       renderRegistrationLink();
     });
     $("#copyRegistrationLinkButton").addEventListener("click", copyRegistrationLink);
@@ -135,7 +183,7 @@
       const link = $("#registrationLink").value.trim();
       if (!link) return;
       active.registrationLink = link;
-      saveActive();
+      saveActive({ immediate: true });
       window.open(link, "_blank", "noopener");
     });
     $("#newTournamentButton").addEventListener("click", () => {
@@ -215,20 +263,28 @@
   }
 
   async function openSharedLobbyFromUrl() {
-    const params = new URLSearchParams(window.location.search);
-    const shareCode = params.get("lobby");
+    const shareCode = getShareCodeFromLocation();
     if (!shareCode) return;
     try {
       activeShared = await SharedTournamentStore.joinSharedTournamentByCode(shareCode);
       mode = "shared";
       sharedError = "";
+      resetSharedSaveQueue();
+      replaceLobbyUrl(activeShared.shareCode);
       subscribeToActiveSharedLobby();
     } catch (error) {
       mode = "shared";
       activeShared = null;
-      sharedError = "Dieses geteilte Turnier existiert nicht mehr oder der Link ist ungültig.";
+      console.error("Shared lobby join failed:", error);
+      sharedError = `Shared Lobby konnte nicht geoeffnet werden: ${error.message}`;
       alert(sharedError);
     }
+  }
+
+  function getShareCodeFromLocation() {
+    const queryCode = new URLSearchParams(window.location.search).get("lobby");
+    const hashCode = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("lobby");
+    return SharedTournamentStore.normalizeShareCode(queryCode || hashCode || "");
   }
 
   function subscribeToActiveSharedLobby() {
@@ -250,14 +306,13 @@
 
   function leaveSharedLobby(updateUrl) {
     SharedTournamentStore.unsubscribeFromSharedTournament();
+    resetSharedSaveQueue();
     mode = "local";
     activeShared = null;
     sharedError = "";
     active = BeachCupStore.getActiveTournament();
     if (updateUrl) {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("lobby");
-      window.history.replaceState({}, "", url.toString());
+      clearLobbyUrl();
     }
     render();
   }
@@ -289,15 +344,28 @@
       activeShared = await SharedTournamentStore.createSharedTournament(localCopy);
       mode = "shared";
       sharedError = "";
+      resetSharedSaveQueue();
       subscribeToActiveSharedLobby();
-      const url = new URL(window.location.href);
-      url.searchParams.set("lobby", activeShared.shareCode);
-      window.history.replaceState({}, "", url.toString());
+      replaceLobbyUrl(activeShared.shareCode);
       render();
       await copyShareLink();
     } catch (error) {
       alert(`Shared Lobby konnte nicht erstellt werden: ${error.message}`);
     }
+  }
+
+  function replaceLobbyUrl(shareCode) {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = `lobby=${encodeURIComponent(shareCode)}`;
+    window.history.replaceState({}, "", url.toString());
+  }
+
+  function clearLobbyUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("lobby");
+    url.hash = "";
+    window.history.replaceState({}, "", url.toString());
   }
 
   async function copyShareLink() {
@@ -330,8 +398,8 @@
     if (tab) tab.click();
   }
 
-  function persistAndRender() {
-    saveActive();
+  function persistAndRender(options = { immediate: true }) {
+    saveActive(options);
     render();
   }
 
@@ -341,49 +409,6 @@
     active.players.push(trimmed);
     active.tournament = null;
     persistAndRender();
-  }
-
-  function parseCsvNames(csv) {
-    const rows = csv
-      .split(/\r?\n/)
-      .map(parseCsvLine)
-      .filter((row) => row.some((cell) => cell.trim()));
-    if (rows.length === 0) return [];
-    const header = rows[0].map((cell) => cell.trim().toLowerCase());
-    const nameIndex = header.findIndex((cell) => /name|spieler|teilnehmer|vorname/.test(cell));
-    const start = nameIndex >= 0 ? 1 : 0;
-    const column = nameIndex >= 0 ? nameIndex : 0;
-    return rows
-      .slice(start)
-      .map((row) => (row[column] || "").trim())
-      .filter(Boolean);
-  }
-
-  function parseCsvLine(line) {
-    const cells = [];
-    let current = "";
-    let quoted = false;
-    for (let i = 0; i < line.length; i += 1) {
-      const char = line[i];
-      const next = line[i + 1];
-      if (char === '"' && quoted && next === '"') {
-        current += '"';
-        i += 1;
-      } else if (char === '"') {
-        quoted = !quoted;
-      } else if ((char === "," || char === ";") && !quoted) {
-        cells.push(current);
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    cells.push(current);
-    return cells;
-  }
-
-  function uniqueNames(names) {
-    return [...new Set(names.map((name) => name.trim()).filter(Boolean))];
   }
 
   function generateTournament() {
@@ -485,7 +510,7 @@
     const link = $("#registrationLink").value.trim();
     if (!link) return;
     active.registrationLink = link;
-    saveActive();
+    saveActive({ immediate: true });
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(link);
       return;
@@ -534,7 +559,7 @@
         const nextName = input.value.trim() || fallback;
         input.value = nextName;
         updateTeamName(input.dataset.teamName, nextName);
-        persistAndRender();
+        persistAndRender({ immediate: true });
       });
     });
   }
@@ -572,7 +597,7 @@
     $("#progressPill").textContent = `${done}/${tournament.matches.length} Gruppenspiele eingetragen`;
     if (BeachTournament.allGroupMatchesComplete(tournament) && tournament.finals.length === 0) {
       tournament.finals = BeachTournament.finalsMatches(tournament);
-      saveActive();
+      saveActive({ immediate: true });
     }
   }
 
@@ -661,7 +686,7 @@
       });
       input.addEventListener("change", () => {
         updateScoreInput(input, matches);
-        saveActive();
+        saveActive({ immediate: true });
         scheduleScoreRender();
       });
       input.addEventListener("keydown", (event) => {
@@ -670,7 +695,7 @@
         const inputs = [...document.querySelectorAll(`${containerSelector} [data-match]`)];
         const currentIndex = inputs.indexOf(input);
         updateScoreInput(input, matches);
-        saveActive();
+        saveActive({ immediate: true });
         const next = inputs[currentIndex + 1];
         if (next && currentIndex >= 0) {
           next.focus();

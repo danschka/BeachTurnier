@@ -210,6 +210,8 @@ declare
   v_name text := nullif(trim(p_player_name), '');
   v_players jsonb;
   v_owners jsonb;
+  v_format jsonb;
+  v_player_limit integer;
 begin
   if auth.uid() is null then
     raise exception 'Authentication required';
@@ -233,7 +235,11 @@ begin
   end if;
 
   v_players := coalesce(v_tournament.state->'players', '[]'::jsonb);
-  if jsonb_array_length(v_players) >= 12 then
+  v_format := coalesce(v_tournament.state->'format', '{}'::jsonb);
+  v_player_limit :=
+    coalesce(nullif((v_format->>'teamCount')::integer, 0), 6) *
+    coalesce(nullif((v_format->>'playersPerTeam')::integer, 0), 2);
+  if jsonb_array_length(v_players) >= v_player_limit then
     raise exception 'The participant list is already full';
   end if;
   if exists (select 1 from jsonb_array_elements_text(v_players) as players(player_name) where player_name = v_name) then

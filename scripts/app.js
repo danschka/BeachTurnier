@@ -32,6 +32,7 @@
   let sharedSaveQueued = false;
   let sharedSaveGeneration = 0;
   let sharedHasLocalChanges = false;
+  let deferredSharedRemote = null;
 
   function isSharedHost() {
     return mode !== "shared" || activeShared?.memberRole === "host";
@@ -50,6 +51,7 @@
         name: "Shared Lobby",
         players: [],
         playerOwners: {},
+        format: { ...DEFAULT_FORMAT },
         tournament: null,
         registrationLink: "",
         logoSrc: DEFAULT_LOGO_SRC,
@@ -92,6 +94,7 @@
     sharedSaveInFlight = false;
     sharedSaveQueued = false;
     sharedHasLocalChanges = false;
+    deferredSharedRemote = null;
   }
 
   function flushSharedSave() {
@@ -144,6 +147,31 @@
     return Boolean(sharedHasLocalChanges || sharedSaveTimer || sharedSaveInFlight || sharedSaveQueued);
   }
 
+  function receiveSharedRemote(shared) {
+    if (mode !== "shared" || shared.id !== activeShared?.id) return;
+    if (shared.version < (activeShared.version || 0)) return;
+    if (hasPendingSharedSave()) {
+      if (!deferredSharedRemote || shared.version >= deferredSharedRemote.version) {
+        deferredSharedRemote = shared;
+      }
+      return;
+    }
+    applySharedRemote(shared);
+  }
+
+  function applyDeferredSharedRemote() {
+    if (mode !== "shared" || !deferredSharedRemote || hasPendingSharedSave()) return;
+    const shared = deferredSharedRemote;
+    deferredSharedRemote = null;
+    if (shared.version < (activeShared?.version || 0)) return;
+    applySharedRemote(shared);
+  }
+
+  function applySharedRemote(shared) {
+    activeShared = shared;
+    render();
+  }
+
   function cloneTournament(tournament) {
     return JSON.parse(JSON.stringify(tournament));
   }
@@ -154,6 +182,7 @@
       name: active.name || DEFAULT_TOURNAMENT_NAME,
       players: active.players || [],
       playerOwners: active.playerOwners || {},
+      format: active.format || DEFAULT_FORMAT,
       tournament: active.tournament || null,
       registrationLink: active.registrationLink || "",
       logoSrc: active.logoSrc || DEFAULT_LOGO_SRC,
@@ -194,7 +223,7 @@
       $("#playerSignupName").value = "";
     });
     $("#samplePlayersButton").addEventListener("click", () => {
-      active.players = [...SAMPLE_PLAYERS];
+      active.players = samplePlayersForFormat();
       active.playerOwners = {};
       active.tournament = null;
       persistAndRender();
@@ -266,10 +295,8 @@
     $("#generateTournamentButton").addEventListener("click", generateTournament);
     $("#reshuffleButton").addEventListener("click", generateTournament);
     $("#startTournamentButton").addEventListener("click", startTournament);
-    $("#buildFinalsButton").addEventListener("click", () => {
-      if (!active.tournament) return;
-      active.tournament.finals = BeachTournament.finalsMatches(active.tournament);
-      persistAndRender();
+    ["teamCountInput", "playersPerTeamInput", "groupCountInput", "targetScoreInput"].forEach((id) => {
+      $(`#${id}`).addEventListener("change", updateFormatFromInputs);
     });
     $("#printButton").addEventListener("click", () => window.print());
     $("#darkModeButton").addEventListener("click", () => {
@@ -334,11 +361,7 @@
     SharedTournamentStore.subscribeToSharedTournament(
       activeShared.id,
       (shared) => {
-        if (mode !== "shared" || shared.id !== activeShared?.id) return;
-        if (hasPendingSharedSave()) return;
-        if (shared.version < (activeShared.version || 0)) return;
-        activeShared = shared;
-        render();
+        receiveSharedRemote(shared);
       },
       () => {
         sharedError = "Dieses geteilte Turnier wurde gelöscht.";
@@ -459,9 +482,23 @@
     render();
   }
 
-  async function addPlayer(name) {
+  function samplePlayersForFormat() {
+    const totalPlayers = currentFormat().totalPlayers;
+    return Array.from({ length: totalPlayers }, (_, index) => SAMPLE_PLAYERS[index] || `Spieler ${index + 1}`);
+  }
+
+  async function addPlayer(name, options = {}) {
     const trimmed = name.trim();
-    if (!trimmed || active.players.includes(trimmed) || active.players.length >= 12) return;
+    const format = currentFormat();
+    if (!trimmed) return;
+    if (active.players.includes(trimmed)) {
+      if (options.rememberPlayer) {
+        localStorage.setItem(PLAYER_NAME_KEY, trimmed);
+        renderPlayerView();
+      }
+      return;
+    }
+    if (active.players.length >= format.totalPlayers) return;
     if (isSharedPlayer() && active.tournament) {
       alert("Nach der Auslosung koennen Spieler keine Teilnehmerliste mehr aendern.");
       return;
@@ -474,7 +511,9 @@
       }
       try {
         activeShared = await SharedTournamentStore.addSharedPlayer(active.id, trimmed);
+        if (options.rememberPlayer) localStorage.setItem(PLAYER_NAME_KEY, trimmed);
         $("#playerName").value = "";
+        $("#playerSignupName").value = "";
         render();
       } catch (error) {
         alert(`Teilnehmer konnte nicht eingetragen werden: ${error.message}`);
@@ -483,8 +522,10 @@
     }
     active.players.push(trimmed);
     active.playerOwners = active.playerOwners || {};
+    if (options.rememberPlayer) localStorage.setItem(PLAYER_NAME_KEY, trimmed);
     active.tournament = null;
     $("#playerName").value = "";
+    $("#playerSignupName").value = "";
     persistAndRender();
   }
 
@@ -517,6 +558,7 @@
     renderHeader();
     renderAccessMode();
     renderTournamentManager();
+    renderFormatControls();
     renderRoleControls();
     renderLogoManager();
     renderPlayers();
@@ -624,9 +666,12 @@
       "#generateTournamentButton",
       "#reshuffleButton",
       "#startTournamentButton",
-      "#buildFinalsButton",
       "#renameTournamentButton",
       "#tournamentNameInput",
+      "#teamCountInput",
+      "#playersPerTeamInput",
+      "#groupCountInput",
+      "#targetScoreInput",
       "#saveLogoUrlButton",
       "#resetLogoButton",
       "#logoFileInput",
@@ -673,7 +718,8 @@
   }
 
   function renderPlayers() {
-    $("#playerCount").textContent = `${active.players.length}/12`;
+    const format = currentFormat();
+    $("#playerCount").textContent = `${active.players.length}/${format.totalPlayers}`;
     const owners = active.playerOwners || {};
     const currentUserId = SharedTournamentStore.getCurrentUserId?.() || "";
     $("#playerList").innerHTML = active.players
@@ -722,20 +768,40 @@
       $("#playerTeamEditor").innerHTML = emptyMessage("Trage dich mit deinem Namen ein, um dein Team zu bearbeiten.");
       return;
     }
+    const canEdit = canEditTeamName(team);
     $("#playerTeamEditor").innerHTML = `<div class="player-team-card">
       <p><strong>${teamLabel(team)}</strong></p>
       <label>
         Teamname
-        <input class="team-name-input" id="playerTeamNameInput" type="text" value="${escapeHtml(team.name)}" placeholder="Teamname">
+        <input class="team-name-input" id="playerTeamNameInput" type="text" value="${escapeHtml(team.name)}" placeholder="Teamname"${canEdit ? "" : " disabled"}>
       </label>
     </div>`;
+    if (!canEdit) return;
     $("#playerTeamNameInput").addEventListener("input", (event) => {
+      if (isSharedPlayer()) return;
       updateTeamName(team.id, event.target.value);
       saveActive();
       renderLive();
     });
-    $("#playerTeamNameInput").addEventListener("change", (event) => {
+    $("#playerTeamNameInput").addEventListener("change", async (event) => {
       const nextName = event.target.value.trim() || team.name || "Team";
+      if (isDuplicateTeamName(team.id, nextName)) {
+        alert("Dieser Teamname ist bereits vergeben.");
+        event.target.value = team.name;
+        return;
+      }
+      if (isSharedPlayer()) {
+        try {
+          activeShared = await SharedTournamentStore.setSharedTeamName(active.id, team.id, nextName);
+          render();
+        } catch (error) {
+          alert(error.message.includes("already")
+            ? "Dieser Teamname ist bereits vergeben."
+            : `Teamname konnte nicht gespeichert werden: ${error.message}`);
+          event.target.value = team.name;
+        }
+        return;
+      }
       event.target.value = nextName;
       updateTeamName(team.id, nextName);
       persistAndRender({ immediate: true });
@@ -1209,6 +1275,7 @@
         name: backup.name || `${DEFAULT_TOURNAMENT_NAME} Import`,
         players: backup.players || [],
         playerOwners: backup.playerOwners || {},
+        format: BeachTournament.normalizeFormat(backup.format || DEFAULT_FORMAT),
         tournament: backup.tournament || null,
         registrationLink: backup.registrationLink || "",
         logoSrc: backup.logoSrc || DEFAULT_LOGO_SRC,
@@ -1221,6 +1288,7 @@
       name: `${DEFAULT_TOURNAMENT_NAME} Import`,
       players: backup.players || [],
       playerOwners: backup.playerOwners || {},
+      format: BeachTournament.normalizeFormat(backup.format || DEFAULT_FORMAT),
       tournament: backup.tournament || null,
       registrationLink: backup.registrationLink || "",
       logoSrc: backup.logoSrc || DEFAULT_LOGO_SRC,

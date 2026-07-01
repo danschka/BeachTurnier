@@ -76,6 +76,7 @@
       name: localTournament.name,
       players: localTournament.players || [],
       playerOwners: localTournament.playerOwners || {},
+      format: localTournament.format || BeachCupStore.DEFAULT_FORMAT,
       tournament: localTournament.tournament || null,
       registrationLink: localTournament.registrationLink || "",
       logoSrc: localTournament.logoSrc || BeachCupStore.DEFAULT_LOGO_SRC,

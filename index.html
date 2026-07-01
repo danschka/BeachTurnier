@@ -225,7 +225,11 @@
       <section class="panel tab-panel" id="teams">
         <div class="section-title">
           <h2>Teams & Gruppen</h2>
-          <button id="reshuffleButton" type="button">Neu auslosen</button>
+          <div class="button-row">
+            <span class="status-pill" id="tournamentStartStatus">Noch nicht gestartet</span>
+            <button id="startTournamentButton" class="primary-button" type="button">Turnier starten</button>
+            <button id="reshuffleButton" type="button">Neu auslosen</button>
+          </div>
         </div>
         <div class="groups-grid" id="groupsView"></div>
       </section>

@@ -15,38 +15,9 @@ using (
 );
 
 drop policy if exists "members can update their lobbies" on public.shared_tournaments;
-create policy "members can update their lobbies"
-on public.shared_tournaments
-for update
-using (
-  exists (
-    select 1
-    from public.shared_lobby_members m
-    where m.tournament_id = shared_tournaments.id
-      and m.user_id = auth.uid()
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.shared_lobby_members m
-    where m.tournament_id = shared_tournaments.id
-      and m.user_id = auth.uid()
-  )
-);
-
 drop policy if exists "members can delete their lobbies" on public.shared_tournaments;
-create policy "members can delete their lobbies"
-on public.shared_tournaments
-for delete
-using (
-  exists (
-    select 1
-    from public.shared_lobby_members m
-    where m.tournament_id = shared_tournaments.id
-      and m.user_id = auth.uid()
-  )
-);
+
+revoke update, delete on public.shared_tournaments from anon, authenticated;
 
 drop policy if exists "members can read lobby members" on public.shared_lobby_members;
 create policy "members can read lobby members"

@@ -21,9 +21,10 @@ Dieses Projekt ist eine reine statische Website. Es braucht fuer GitHub Pages ke
 - Selbstanmeldung über einen gespeicherten Formular-Link
 - Mehrere eigene Turniere pro Browserprofil verwalten
 - Turniertitel und Logo pro Turnier anpassen
-- Geteilte Online-Lobbys mit Supabase und Bearbeitungslink
+- Geteilte Online-Lobbys mit Supabase, Ausrichterrolle und Spielerrechten
 - Zufällige Team- und Gruppenauslosung
-- Teamnamen nach der Auslosung bearbeiten
+- Teamnamen nach der Auslosung bis zum Turnierstart bearbeiten
+- Startbutton für den Ausrichter, der Teamnamen sperrt
 - Gruppenphase mit Tabellen nach Siegen, Punktedifferenz, erzielten Punkten und direktem Vergleich
 - Automatische KO-Phase mit Halbfinals, Platz 5, Platz 3 und Finale als Best-of-3
 - Live-Spielplan mit aktuellem und nächstem Spiel
@@ -74,13 +75,13 @@ https://<github-pages-domain>/<projektname>/#lobby=<share_code>
 
 Alte Links mit `?lobby=<share_code>` werden weiterhin gelesen und nach dem Oeffnen automatisch auf die neue Hash-Form umgestellt. Die Hash-Form ist fuer statische Hosts wie GitHub Pages robuster, weil sie keine Serverroute benoetigt.
 
-Der Link ist ein Bearbeitungslink. Wer ihn erhält, kann die Lobby vollständig verändern, inklusive Teilnehmer, Ergebnisse, Einstellungen, Spielplan und Löschen. Teile ihn nur mit vertrauenswürdigen Personen.
+Der Link ist ein Spielerlink. Wer ihn erhält, kann die Lobby lesen, den eigenen Namen eintragen, den eigenen Namen vor der Auslosung wieder entfernen und nach der Auslosung bis zum Turnierstart den eigenen Teamnamen bearbeiten. Nur der Browser, der die Lobby erstellt hat, ist Ausrichter und darf Teilnehmerliste, Auslosung, Turnierstart, Ergebnisse, Einstellungen, Spielplan und Löschen verwalten.
 
 ### Supabase einrichten
 
 1. Supabase-Projekt erstellen.
 2. Unter Auth die Anonymous Sign-ins aktivieren. Ohne diese Einstellung kann kein Browser einer Lobby beitreten.
-3. Die SQL-Migration `supabase/migrations/001_shared_tournaments.sql` im SQL Editor oder per Supabase CLI ausführen.
+3. Die SQL-Migrationen in `supabase/migrations/` der Reihenfolge nach im SQL Editor oder per Supabase CLI ausführen.
 4. Realtime für die Tabelle `shared_tournaments` ist in der Migration enthalten.
 5. `.env.example` als Orientierung nutzen:
 
@@ -110,6 +111,14 @@ column reference "share_code" is ambiguous
 
 dann laeuft in Supabase noch die alte Version der Funktion `join_shared_lobby`. Fuehre im Supabase SQL Editor den Inhalt von `supabase/migrations/002_fix_join_shared_lobby_ambiguity.sql` aus. Danach die Seite neu laden und den Shared-Link erneut im Inkognito-Fenster testen.
 
+Wenn beim Eintragen eines Spielers diese Meldung erscheint:
+
+```text
+Could not find the function public.add_shared_player(...) in the schema cache
+```
+
+dann fehlt in Supabase noch die Rollen-Migration. Fuehre im Supabase SQL Editor den Inhalt von `supabase/migrations/004_role_based_shared_lobby_permissions.sql` aus. Die Migration enthaelt am Ende `notify pgrst, 'reload schema';`, damit der PostgREST-Schema-Cache aktualisiert wird. Danach die Website neu laden und den Test wiederholen.
+
 ### Datenmodell und Zugriff
 
 Die Shared-Lobby nutzt bewusst einen serialisierten Turnierzustand pro Lobby:
@@ -121,6 +130,9 @@ Die Shared-Lobby nutzt bewusst einen serialisierten Turnierzustand pro Lobby:
   - `config`
   - `status`
   - `state`
+    - `players`
+    - `playerOwners`
+    - `tournament`
   - `version`
   - `created_at`
   - `updated_at`
@@ -128,11 +140,12 @@ Die Shared-Lobby nutzt bewusst einen serialisierten Turnierzustand pro Lobby:
   - `id`
   - `tournament_id`
   - `user_id`
+  - `role`
   - `joined_at`
 
-`create_shared_lobby(...)` erstellt eine Lobby und trägt `auth.uid()` als Mitglied ein. `join_shared_lobby(share_code)` prüft den Bearbeitungslink und trägt den anonym angemeldeten Browser als Mitglied der passenden Lobby ein.
+`create_shared_lobby(...)` erstellt eine Lobby und trägt `auth.uid()` als Mitglied mit Rolle `host` ein. `join_shared_lobby(share_code)` prüft den Link und trägt den anonym angemeldeten Browser als Mitglied mit Rolle `player` ein.
 
-RLS erlaubt Lesen, Bearbeiten und Löschen nur für Turniere, bei denen `auth.uid()` Mitglied genau dieser `tournament_id` ist. Es gibt absichtlich keine Rollen: jedes Mitglied hat volle Bearbeitungsrechte.
+RLS erlaubt Lesen nur für Mitglieder der jeweiligen `tournament_id`. Direkte Updates und Deletes auf `shared_tournaments` sind für Browser-Clients entzogen. Änderungen laufen über RPC-Funktionen: Der Ausrichter speichert den vollständigen Turnierstand, Spieler dürfen nur ihren eigenen Namen verwalten und den Namen des eigenen Teams setzen. Doppelte Teamnamen werden abgelehnt.
 
 ### Lokales Turnier veröffentlichen
 
@@ -140,15 +153,20 @@ Bei lokalen Turnieren erscheint die Aktion `Lokales Turnier veröffentlichen`. D
 
 ### Akzeptanztests
 
-Test A: Gemeinsame Bearbeitung
+Test A: Rollen und erlaubte Schreibrechte
 
 1. Browser A erstellt eine Shared Lobby `Turnier A` und kopiert Link A.
 2. Browser B öffnet Link A.
 3. Browser A fügt einen Teilnehmer hinzu.
 4. Browser B sieht die Änderung ohne Neuladen.
-5. Browser B trägt ein Ergebnis ein.
+5. Browser B trägt den eigenen Namen ein.
 6. Browser A sieht die Änderung ohne Neuladen.
-7. Browser B ändert Turniername, Logo oder Spielplan.
+7. Browser B kann keine Ergebnisse, Turniernamen, Logos oder Spielpläne ändern.
+8. Browser A lost Teams aus.
+9. Browser B kann nur den Teamnamen des eigenen Teams ändern.
+10. Browser B erhält eine Meldung, wenn der Teamname bereits vergeben ist.
+11. Browser A startet das Turnier.
+12. Browser B kann den Teamnamen danach nicht mehr ändern.
 
 Test B: Zwei getrennte Shared Lobbies
 

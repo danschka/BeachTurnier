@@ -28,6 +28,15 @@
   let sharedSaveInFlight = false;
   let sharedSaveQueued = false;
   let sharedSaveGeneration = 0;
+  let sharedHasLocalChanges = false;
+
+  function isSharedHost() {
+    return mode !== "shared" || activeShared?.memberRole === "host";
+  }
+
+  function isSharedPlayer() {
+    return mode === "shared" && activeShared?.memberRole !== "host";
+  }
 
   function refreshActive() {
     if (mode === "shared" && activeShared) {
@@ -37,6 +46,7 @@
         id: "",
         name: "Shared Lobby",
         players: [],
+        playerOwners: {},
         tournament: null,
         registrationLink: "",
         logoSrc: DEFAULT_LOGO_SRC,
@@ -49,6 +59,8 @@
 
   function saveActive(options = {}) {
     if (mode === "shared") {
+      if (!isSharedHost()) return;
+      sharedHasLocalChanges = true;
       activeShared = {
         ...activeShared,
         id: active.id,
@@ -76,6 +88,7 @@
     sharedSaveTimer = null;
     sharedSaveInFlight = false;
     sharedSaveQueued = false;
+    sharedHasLocalChanges = false;
   }
 
   function flushSharedSave() {
@@ -101,6 +114,7 @@
           active.version = shared.version;
           if (!hasQueuedChanges) {
             active = SharedTournamentStore.sharedToActiveTournament(activeShared);
+            sharedHasLocalChanges = false;
           }
         }
       })
@@ -118,6 +132,10 @@
       });
   }
 
+  function hasPendingSharedSave() {
+    return Boolean(sharedHasLocalChanges || sharedSaveTimer || sharedSaveInFlight || sharedSaveQueued);
+  }
+
   function cloneTournament(tournament) {
     return JSON.parse(JSON.stringify(tournament));
   }
@@ -127,6 +145,7 @@
       id: active.id,
       name: active.name || DEFAULT_TOURNAMENT_NAME,
       players: active.players || [],
+      playerOwners: active.playerOwners || {},
       tournament: active.tournament || null,
       registrationLink: active.registrationLink || "",
       logoSrc: active.logoSrc || DEFAULT_LOGO_SRC,
@@ -159,10 +178,10 @@
     $("#playerForm").addEventListener("submit", (event) => {
       event.preventDefault();
       addPlayer($("#playerName").value);
-      $("#playerName").value = "";
     });
     $("#samplePlayersButton").addEventListener("click", () => {
       active.players = [...SAMPLE_PLAYERS];
+      active.playerOwners = {};
       active.tournament = null;
       persistAndRender();
     });
@@ -170,6 +189,7 @@
       if (!confirmDestructive("alle Teilnehmer löschen")) return;
       if (!confirm("Alle Daten dieses Turniers löschen?")) return;
       active.players = [];
+      active.playerOwners = {};
       active.tournament = null;
       persistAndRender();
     });
@@ -293,6 +313,8 @@
       activeShared.id,
       (shared) => {
         if (mode !== "shared" || shared.id !== activeShared?.id) return;
+        if (hasPendingSharedSave()) return;
+        if (shared.version < (activeShared.version || 0)) return;
         activeShared = shared;
         render();
       },
@@ -325,6 +347,7 @@
       id: undefined,
       name: name.trim() || DEFAULT_TOURNAMENT_NAME,
       players: [],
+      playerOwners: {},
       tournament: null,
     };
     await activateSharedFromLocalCopy(localCopy);
@@ -390,7 +413,7 @@
 
   function confirmDestructive(action) {
     if (mode !== "shared") return true;
-    return confirm(`Achtung: Alle Personen mit diesem Link können "${action}" ausführen. Fortfahren?`);
+    return confirm(`Achtung: Du bist Ausrichter und kannst "${action}" fuer diese Lobby ausfuehren. Fortfahren?`);
   }
 
   function showTab(id) {
@@ -403,11 +426,32 @@
     render();
   }
 
-  function addPlayer(name) {
+  async function addPlayer(name) {
     const trimmed = name.trim();
     if (!trimmed || active.players.includes(trimmed) || active.players.length >= 12) return;
+    if (isSharedPlayer() && active.tournament) {
+      alert("Nach der Auslosung koennen Spieler keine Teilnehmerliste mehr aendern.");
+      return;
+    }
+    if (isSharedPlayer()) {
+      const currentUserId = SharedTournamentStore.getCurrentUserId?.() || "";
+      if (Object.values(active.playerOwners || {}).includes(currentUserId)) {
+        alert("Du hast bereits einen Namen eingetragen.");
+        return;
+      }
+      try {
+        activeShared = await SharedTournamentStore.addSharedPlayer(active.id, trimmed);
+        $("#playerName").value = "";
+        render();
+      } catch (error) {
+        alert(`Teilnehmer konnte nicht eingetragen werden: ${error.message}`);
+      }
+      return;
+    }
     active.players.push(trimmed);
+    active.playerOwners = active.playerOwners || {};
     active.tournament = null;
+    $("#playerName").value = "";
     persistAndRender();
   }
 
@@ -426,6 +470,7 @@
     refreshActive();
     renderHeader();
     renderTournamentManager();
+    renderRoleControls();
     renderLogoManager();
     renderPlayers();
     renderRegistrationLink();
@@ -452,10 +497,13 @@
       .map((item) => `<option value="${item.id}"${item.id === active.id ? " selected" : ""}>${escapeHtml(item.name || DEFAULT_TOURNAMENT_NAME)}</option>`)
       .join("");
     $("#tournamentNameInput").value = active.name || DEFAULT_TOURNAMENT_NAME;
-    $("#modeLabel").textContent = mode === "shared" ? "Shared Lobby · gemeinsam bearbeitbar" : "Lokales Turnier";
+    $("#modeLabel").textContent = mode === "shared"
+      ? `Shared Lobby · ${isSharedHost() ? "Ausrichter" : "Spieler"}`
+      : "Lokales Turnier";
     $("#tournamentSelect").disabled = mode === "shared";
     $("#newTournamentButton").disabled = mode === "shared";
     $("#newSharedTournamentButton").disabled = mode === "shared";
+    $("#samplePlayersButton").disabled = !isSharedHost();
     $("#sharedLobbyBox").classList.toggle("is-hidden", mode !== "shared" && !SharedTournamentStore.isConfigured());
     $("#copyShareLinkButton").hidden = mode !== "shared" || !activeShared;
     $("#leaveSharedLobbyButton").hidden = mode !== "shared";
@@ -463,13 +511,42 @@
     $("#publishLocalButton").disabled = !SharedTournamentStore.isConfigured();
     $("#sharedLobbyTitle").textContent = mode === "shared" ? `Shared Lobby: ${active.name || "unbekannt"}` : "Lokales Turnier online veröffentlichen";
     $("#sharedLobbyText").textContent = sharedError || (mode === "shared"
-      ? "Alle Personen mit dem Link können dieses Turnier vollständig bearbeiten."
+      ? (isSharedHost()
+        ? "Du bist Ausrichter und kannst Teilnehmer, Auslosung, Teamnamen und Ergebnisse bearbeiten."
+        : "Du bist Spieler: Du kannst deinen Namen eintragen, vor der Auslosung wieder entfernen und nach der Auslosung den Namen deines Teams bearbeiten.")
       : "Erstellt eine Online-Kopie dieses lokalen Turniers und erzeugt einen Bearbeitungslink.");
   }
 
   function renderLogoManager() {
     const logoSrc = active.logoSrc || DEFAULT_LOGO_SRC;
     $("#logoUrlInput").value = logoSrc.startsWith("data:") || logoSrc === DEFAULT_LOGO_SRC ? "" : logoSrc;
+  }
+
+  function renderRoleControls() {
+    const host = isSharedHost();
+    [
+      "#clearAllButton",
+      "#generateTournamentButton",
+      "#reshuffleButton",
+      "#buildFinalsButton",
+      "#renameTournamentButton",
+      "#tournamentNameInput",
+      "#saveLogoUrlButton",
+      "#resetLogoButton",
+      "#logoFileInput",
+      "#saveRegistrationLinkButton",
+      "#registrationLink",
+      "#deleteTournamentButton",
+      "#jsonImportInput",
+    ].forEach((selector) => {
+      const element = $(selector);
+      if (element) element.disabled = !host;
+    });
+    const playerInput = $("#playerName");
+    const playerSubmit = $("#playerForm button[type='submit']");
+    const canEditPlayers = host || !active.tournament;
+    playerInput.disabled = !canEditPlayers;
+    playerSubmit.disabled = !canEditPlayers;
   }
 
   function importLogoFile(event) {
@@ -490,12 +567,28 @@
 
   function renderPlayers() {
     $("#playerCount").textContent = `${active.players.length}/12`;
+    const owners = active.playerOwners || {};
+    const currentUserId = SharedTournamentStore.getCurrentUserId?.() || "";
     $("#playerList").innerHTML = active.players
-      .map((player, index) => `<li>${escapeHtml(player)} <button data-remove="${index}" type="button">Entfernen</button></li>`)
+      .map((player, index) => {
+        const canRemove = isSharedHost() || (!active.tournament && owners[player] === currentUserId);
+        return `<li>${escapeHtml(player)} ${canRemove ? `<button data-remove="${index}" type="button">Entfernen</button>` : ""}</li>`;
+      })
       .join("");
     document.querySelectorAll("[data-remove]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
+        const player = active.players[Number(button.dataset.remove)];
+        if (isSharedPlayer()) {
+          try {
+            activeShared = await SharedTournamentStore.removeSharedPlayer(active.id, player);
+            render();
+          } catch (error) {
+            alert(`Teilnehmer konnte nicht entfernt werden: ${error.message}`);
+          }
+          return;
+        }
         active.players.splice(Number(button.dataset.remove), 1);
+        if (active.playerOwners) delete active.playerOwners[player];
         active.tournament = null;
         persistAndRender();
       });
@@ -536,31 +629,67 @@
   }
 
   function teamChip(team) {
+    const canEdit = canEditTeamName(team);
     return `<li class="team-chip">
       <label>
         Teamname
-        <input class="team-name-input" data-team-name="${team.id}" type="text" value="${escapeHtml(team.name)}" placeholder="Teamname">
+        <input class="team-name-input" data-team-name="${team.id}" type="text" value="${escapeHtml(team.name)}" placeholder="Teamname"${canEdit ? "" : " disabled"}>
       </label>
       <span>${team.players.map(escapeHtml).join(" & ")}</span>
     </li>`;
   }
 
+  function canEditTeamName(team) {
+    if (isSharedHost()) return true;
+    if (!active.tournament || !team) return false;
+    const owners = active.playerOwners || {};
+    const currentUserId = SharedTournamentStore.getCurrentUserId?.() || "";
+    return team.players.some((player) => owners[player] === currentUserId);
+  }
+
   function bindTeamNameInputs() {
     document.querySelectorAll("[data-team-name]").forEach((input) => {
       input.addEventListener("input", () => {
+        if (isSharedPlayer()) return;
+        if (isDuplicateTeamName(input.dataset.teamName, input.value)) return;
         updateTeamName(input.dataset.teamName, input.value);
         saveActive();
         renderLive();
       });
-      input.addEventListener("change", () => {
+      input.addEventListener("change", async () => {
         const team = findTeam(input.dataset.teamName);
         if (!team) return;
         const fallback = input.dataset.originalName || team.name || "Team";
         const nextName = input.value.trim() || fallback;
+        if (isDuplicateTeamName(input.dataset.teamName, nextName)) {
+          alert("Dieser Teamname ist bereits vergeben.");
+          input.value = team.name;
+          return;
+        }
+        if (isSharedPlayer()) {
+          try {
+            activeShared = await SharedTournamentStore.setSharedTeamName(active.id, input.dataset.teamName, nextName);
+            render();
+          } catch (error) {
+            alert(error.message.includes("already")
+              ? "Dieser Teamname ist bereits vergeben."
+              : `Teamname konnte nicht gespeichert werden: ${error.message}`);
+            input.value = team.name;
+          }
+          return;
+        }
         input.value = nextName;
         updateTeamName(input.dataset.teamName, nextName);
         persistAndRender({ immediate: true });
       });
+    });
+  }
+
+  function isDuplicateTeamName(teamId, name) {
+    const normalized = name.trim().toLocaleLowerCase("de-DE");
+    if (!normalized || !active.tournament) return false;
+    return (active.tournament.teams || []).some((team) => {
+      return team.id !== teamId && team.name.trim().toLocaleLowerCase("de-DE") === normalized;
     });
   }
 
@@ -595,7 +724,7 @@
     $("#refereeList").innerHTML = refereeOverview(tournament.matches, tournament);
     const done = tournament.matches.filter((match) => BeachTournament.matchResult(match)).length;
     $("#progressPill").textContent = `${done}/${tournament.matches.length} Gruppenspiele eingetragen`;
-    if (BeachTournament.allGroupMatchesComplete(tournament) && tournament.finals.length === 0) {
+    if (isSharedHost() && BeachTournament.allGroupMatchesComplete(tournament) && tournament.finals.length === 0) {
       tournament.finals = BeachTournament.finalsMatches(tournament);
       saveActive({ immediate: true });
     }
@@ -658,6 +787,7 @@
     const result = BeachTournament.matchResult(match);
     const current = !result && match.teamA && match.teamB ? " is-current" : "";
     const sets = match.sets || [];
+    const scoreDisabled = isSharedHost() ? "" : " disabled";
     return `<article class="match-card${current}">
       <div class="match-meta">${escapeHtml(match.label)} · bis ${match.target}${match.bestOf > 1 ? " · Best-of-3" : ""}
         <span class="match-referee">Schiri: ${refereeLabel(match, tournament)}</span>
@@ -668,8 +798,8 @@
           .map(
             (set, index) => `<div class="set-row">
               <span>Satz ${index + 1}</span>
-              <input data-match="${match.id}" data-set="${index}" data-side="a" inputmode="numeric" type="number" min="0" max="99" value="${escapeHtml(set.a)}" aria-label="Team A Satz ${index + 1}">
-              <input data-match="${match.id}" data-set="${index}" data-side="b" inputmode="numeric" type="number" min="0" max="99" value="${escapeHtml(set.b)}" aria-label="Team B Satz ${index + 1}">
+              <input data-match="${match.id}" data-set="${index}" data-side="a" inputmode="numeric" type="number" min="0" max="99" value="${escapeHtml(set.a)}" aria-label="Team A Satz ${index + 1}"${scoreDisabled}>
+              <input data-match="${match.id}" data-set="${index}" data-side="b" inputmode="numeric" type="number" min="0" max="99" value="${escapeHtml(set.b)}" aria-label="Team B Satz ${index + 1}"${scoreDisabled}>
             </div>`
           )
           .join("")}
@@ -679,6 +809,7 @@
 
   function bindScoreInputs(matches, containerSelector) {
     document.querySelectorAll(`${containerSelector} [data-match]`).forEach((input) => {
+      if (input.disabled) return;
       input.addEventListener("input", () => {
         updateScoreInput(input, matches);
         saveActive();
@@ -923,6 +1054,7 @@
         id: backup.id || undefined,
         name: backup.name || `${DEFAULT_TOURNAMENT_NAME} Import`,
         players: backup.players || [],
+        playerOwners: backup.playerOwners || {},
         tournament: backup.tournament || null,
         registrationLink: backup.registrationLink || "",
         logoSrc: backup.logoSrc || DEFAULT_LOGO_SRC,
@@ -934,6 +1066,7 @@
       id: undefined,
       name: `${DEFAULT_TOURNAMENT_NAME} Import`,
       players: backup.players || [],
+      playerOwners: backup.playerOwners || {},
       tournament: backup.tournament || null,
       registrationLink: backup.registrationLink || "",
       logoSrc: backup.logoSrc || DEFAULT_LOGO_SRC,

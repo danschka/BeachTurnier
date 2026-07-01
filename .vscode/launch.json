@@ -5,18 +5,16 @@
       "type": "chrome",
       "request": "launch",
       "name": "Debug BeachTurnier in Chrome",
-      "url": "http://127.0.0.1:5500/index.html",
+      "url": "file:///${workspaceFolder}/index.html",
       "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "Serve BeachTurnier",
       "sourceMaps": true
     },
     {
       "type": "msedge",
       "request": "launch",
       "name": "Debug BeachTurnier in Edge",
-      "url": "http://127.0.0.1:5500/index.html",
+      "url": "file:///${workspaceFolder}/index.html",
       "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "Serve BeachTurnier",
       "sourceMaps": true
     }
   ]

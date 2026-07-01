@@ -10,8 +10,8 @@ Desktop.ini
 
 # Editor and local tooling
 .vscode/*
-!.vscode/launch.json
-!.vscode/tasks.json
+.vscode/launch.json
+.vscode/tasks.json
 .idea/
 *.swp
 *.swo

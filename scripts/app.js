@@ -27,6 +27,7 @@
   let sharedError = "";
   const $ = (selector) => document.querySelector(selector);
   let scoreRenderTimer = null;
+  let scoreSaveTimer = null;
   let sharedSaveTimer = null;
   let sharedSaveInFlight = false;
   let sharedSaveQueued = false;
@@ -89,6 +90,8 @@
 
   function resetSharedSaveQueue() {
     sharedSaveGeneration += 1;
+    window.clearTimeout(scoreSaveTimer);
+    scoreSaveTimer = null;
     window.clearTimeout(sharedSaveTimer);
     sharedSaveTimer = null;
     sharedSaveInFlight = false;
@@ -1016,8 +1019,8 @@
           .map(
             (set, index) => `<div class="set-row">
               <span>Satz ${index + 1}</span>
-              <input data-match="${match.id}" data-set="${index}" data-side="a" inputmode="numeric" type="number" min="0" max="99" value="${escapeHtml(set.a)}" aria-label="Team A Satz ${index + 1}"${scoreDisabled}>
-              <input data-match="${match.id}" data-set="${index}" data-side="b" inputmode="numeric" type="number" min="0" max="99" value="${escapeHtml(set.b)}" aria-label="Team B Satz ${index + 1}"${scoreDisabled}>
+              <input data-match="${match.id}" data-set="${index}" data-side="a" inputmode="numeric" pattern="[0-9]*" maxlength="2" type="text" value="${escapeHtml(set.a)}" aria-label="Team A Satz ${index + 1}"${scoreDisabled}>
+              <input data-match="${match.id}" data-set="${index}" data-side="b" inputmode="numeric" pattern="[0-9]*" maxlength="2" type="text" value="${escapeHtml(set.b)}" aria-label="Team B Satz ${index + 1}"${scoreDisabled}>
             </div>`
           )
           .join("")}
@@ -1030,13 +1033,12 @@
       if (input.disabled) return;
       input.addEventListener("input", () => {
         updateScoreInput(input, matches);
-        saveActive();
-        scheduleScoreRender();
+        scheduleScoreSave();
+        renderLive();
       });
       input.addEventListener("change", () => {
         updateScoreInput(input, matches);
-        saveActive({ immediate: true });
-        scheduleScoreRender();
+        saveScores({ immediate: true });
       });
       input.addEventListener("keydown", (event) => {
         if (event.key !== "Enter") return;
@@ -1044,14 +1046,13 @@
         const inputs = [...document.querySelectorAll(`${containerSelector} [data-match]`)];
         const currentIndex = inputs.indexOf(input);
         updateScoreInput(input, matches);
-        saveActive({ immediate: true });
+        saveScores({ immediate: true });
         const next = inputs[currentIndex + 1];
         if (next && currentIndex >= 0) {
           next.focus();
         } else {
           input.blur();
         }
-        scheduleScoreRender();
       });
     });
   }
@@ -1059,10 +1060,28 @@
   function updateScoreInput(input, matches) {
     const match = matches.find((item) => item.id === input.dataset.match);
     if (!match) return;
-    match.sets[Number(input.dataset.set)][input.dataset.side] = input.value;
+    const value = input.value.replace(/\D/g, "").slice(0, 2);
+    if (input.value !== value) input.value = value;
+    match.sets[Number(input.dataset.set)][input.dataset.side] = value;
+  }
+
+  function updateDerivedScores() {
     if (active.tournament) {
       active.tournament.finals = BeachTournament.finalsMatches(active.tournament);
     }
+  }
+
+  function scheduleScoreSave() {
+    window.clearTimeout(scoreSaveTimer);
+    scoreSaveTimer = window.setTimeout(() => saveScores(), 1000);
+  }
+
+  function saveScores(options = {}) {
+    window.clearTimeout(scoreSaveTimer);
+    scoreSaveTimer = null;
+    updateDerivedScores();
+    saveActive({ immediate: Boolean(options.immediate) });
+    scheduleScoreRender();
   }
 
   function scheduleScoreRender() {

@@ -12,7 +12,7 @@
   <body>
     <header class="app-header">
       <div class="brand-block">
-        <p class="eyebrow">Beachvolleyball · 12 Spieler · 6 Teams</p>
+        <p class="eyebrow" id="formatEyebrow">Beachvolleyball · 12 Spieler · 6 Teams</p>
         <div class="brand-title">
           <img
             id="tournamentLogo"
@@ -33,6 +33,7 @@
     <main class="app-shell">
       <nav class="tabs" aria-label="Bereiche">
         <button class="tab is-active" data-tab="setup" type="button">Setup</button>
+        <button class="tab" data-tab="player" type="button">Spieler</button>
         <button class="tab" data-tab="teams" type="button">Teams</button>
         <button class="tab" data-tab="matches" type="button">Spielplan</button>
         <button class="tab" data-tab="standings" type="button">Tabellen</button>
@@ -96,8 +97,34 @@
               </div>
               <div class="button-row">
                 <button id="copyShareLinkButton" type="button">Link kopieren</button>
+                <button id="copyPlayerLinkButton" type="button">Spieler-Link kopieren</button>
                 <button id="publishLocalButton" type="button">Online veröffentlichen</button>
                 <button id="leaveSharedLobbyButton" type="button">Verlassen</button>
+              </div>
+            </div>
+
+            <div class="setup-card format-card">
+              <div class="section-title compact-title">
+                <h3>Turnierformat</h3>
+                <strong id="totalPlayersLabel">12 Spieler</strong>
+              </div>
+              <div class="format-grid">
+                <label>
+                  Teams
+                  <input id="teamCountInput" type="number" min="2" max="32" step="1">
+                </label>
+                <label>
+                  Spieler pro Team
+                  <input id="playersPerTeamInput" type="number" min="1" max="8" step="1">
+                </label>
+                <label>
+                  Gruppen
+                  <input id="groupCountInput" type="number" min="1" max="8" step="1">
+                </label>
+                <label>
+                  Satz bis
+                  <input id="targetScoreInput" type="number" min="5" max="99" step="1">
+                </label>
               </div>
             </div>
 
@@ -113,7 +140,7 @@
 
             <div class="setup-card player-list-card">
               <div class="section-title compact-title">
-                <h3>Teilnehmerliste <span id="playerCount">0/12</span></h3>
+                <h3>Teilnehmerliste <span id="playerCount">0/0</span></h3>
                 <button id="clearAllButton" class="danger-button" type="button">Liste leeren</button>
               </div>
               <ol class="player-list" id="playerList"></ol>
@@ -123,7 +150,7 @@
           <aside class="setup-side">
             <div class="action-card">
               <h3>Turnier starten</h3>
-              <p>Bereit bei genau 12 Teilnehmern.</p>
+              <p>Bereit bei der eingestellten Teilnehmerzahl.</p>
               <button class="primary-button wide" id="generateTournamentButton" type="button">Teams und Gruppen auslosen</button>
             </div>
 
@@ -169,6 +196,32 @@
         </div>
       </section>
 
+      <section class="panel tab-panel" id="player">
+        <div class="section-title">
+          <h2>Spieler</h2>
+          <span class="status-pill" id="playerViewCount">0 Spieler</span>
+        </div>
+        <div class="player-view-layout">
+          <div class="setup-card player-entry-card">
+            <form id="playerSignupForm" class="player-form">
+              <label>
+                Name eintragen
+                <input id="playerSignupName" type="text" autocomplete="name" placeholder="Vorname Nachname">
+              </label>
+              <button class="primary-button" type="submit">Eintragen</button>
+            </form>
+          </div>
+          <div class="setup-card">
+            <h3>Angemeldete Spieler</h3>
+            <ol class="player-list readonly-list" id="publicPlayerList"></ol>
+          </div>
+          <div class="setup-card">
+            <h3>Mein Team</h3>
+            <div id="playerTeamEditor"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="panel tab-panel" id="teams">
         <div class="section-title">
           <h2>Teams & Gruppen</h2>
@@ -200,7 +253,6 @@
       <section class="panel tab-panel" id="finals">
         <div class="section-title">
           <h2>KO-Phase & Platzierung</h2>
-          <button id="buildFinalsButton" type="button">KO-Phase aktualisieren</button>
         </div>
         <div class="finals-layout">
           <div class="match-list" id="finalsList"></div>

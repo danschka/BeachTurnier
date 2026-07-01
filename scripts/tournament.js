@@ -1,8 +1,46 @@
 (function () {
-  const GROUPS = ["A", "B"];
+  const DEFAULT_FORMAT = {
+    teamCount: 6,
+    playersPerTeam: 2,
+    groupCount: 2,
+    targetScore: 15,
+    finalsBestOf: 3,
+  };
 
   function uid(prefix) {
     return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function clampInt(value, fallback, min, max) {
+    const number = Number.parseInt(value, 10);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(max, Math.max(min, number));
+  }
+
+  function normalizeFormat(format = {}) {
+    const teamCount = clampInt(format.teamCount, DEFAULT_FORMAT.teamCount, 2, 32);
+    const playersPerTeam = clampInt(format.playersPerTeam, DEFAULT_FORMAT.playersPerTeam, 1, 8);
+    const groupCount = clampInt(format.groupCount, DEFAULT_FORMAT.groupCount, 1, Math.min(8, teamCount));
+    const targetScore = clampInt(format.targetScore, DEFAULT_FORMAT.targetScore, 5, 99);
+    const finalsBestOf = clampInt(format.finalsBestOf, DEFAULT_FORMAT.finalsBestOf, 1, 5);
+    return {
+      teamCount,
+      playersPerTeam,
+      groupCount,
+      targetScore,
+      finalsBestOf: finalsBestOf % 2 === 0 ? finalsBestOf + 1 : finalsBestOf,
+      totalPlayers: teamCount * playersPerTeam,
+    };
+  }
+
+  function groupName(index) {
+    return String.fromCharCode(65 + index);
+  }
+
+  function groupNames(tournamentOrFormat) {
+    if (tournamentOrFormat?.groups) return Object.keys(tournamentOrFormat.groups);
+    const format = normalizeFormat(tournamentOrFormat);
+    return Array.from({ length: format.groupCount }, (_, index) => groupName(index));
   }
 
   function shuffle(items) {
@@ -14,54 +52,63 @@
     return copy;
   }
 
-  function makeTeams(players) {
-    return shuffle(players).reduce((teams, player, index) => {
-      if (index % 2 === 0) {
-        teams.push({ id: uid("team"), name: `Team ${teams.length + 1}`, players: [player] });
-      } else {
-        teams[teams.length - 1].players.push(player);
-      }
-      return teams;
-    }, []);
+  function makeTeams(players, format) {
+    const shuffled = shuffle(players).slice(0, format.totalPlayers);
+    return Array.from({ length: format.teamCount }, (_, teamIndex) => {
+      const start = teamIndex * format.playersPerTeam;
+      return {
+        id: uid("team"),
+        name: `Team ${teamIndex + 1}`,
+        players: shuffled.slice(start, start + format.playersPerTeam),
+      };
+    });
   }
 
-  function assignGroups(teams) {
-    const shuffled = shuffle(teams);
-    return {
-      A: shuffled.slice(0, 3).map((team) => ({ ...team, group: "A" })),
-      B: shuffled.slice(3, 6).map((team) => ({ ...team, group: "B" })),
-    };
+  function assignGroups(teams, format) {
+    const names = groupNames(format);
+    const groups = Object.fromEntries(names.map((name) => [name, []]));
+    shuffle(teams).forEach((team, index) => {
+      const group = names[index % names.length];
+      groups[group].push({ ...team, group });
+    });
+    return groups;
   }
 
-  function roundRobinMatches(groups) {
+  function roundRobinMatches(groups, format) {
     const matches = [];
-    GROUPS.forEach((group) => {
+    groupNames({ groups }).forEach((group) => {
       const teams = groups[group] || [];
-      [[0, 1], [1, 2], [0, 2]].forEach((pair, index) => {
-        matches.push({
-          id: uid("group"),
-          phase: "group",
-          group,
-          label: `Gruppe ${group} · Spiel ${index + 1}`,
-          bestOf: 1,
-          target: 15,
-          teamA: teams[pair[0]]?.id,
-          teamB: teams[pair[1]]?.id,
-          sets: [{ a: "", b: "" }],
-        });
-      });
+      let game = 1;
+      for (let left = 0; left < teams.length; left += 1) {
+        for (let right = left + 1; right < teams.length; right += 1) {
+          matches.push({
+            id: uid("group"),
+            phase: "group",
+            group,
+            label: `Gruppe ${group} · Spiel ${game}`,
+            bestOf: 1,
+            target: format.targetScore,
+            teamA: teams[left]?.id,
+            teamB: teams[right]?.id,
+            sets: [{ a: "", b: "" }],
+          });
+          game += 1;
+        }
+      }
     });
     return matches;
   }
 
-  function createTournament(players) {
-    const teams = makeTeams(players);
-    const groups = assignGroups(teams);
+  function createTournament(players, requestedFormat) {
+    const format = normalizeFormat(requestedFormat);
+    const teams = makeTeams(players, format);
+    const groups = assignGroups(teams, format);
     return {
       players,
-      teams: [...groups.A, ...groups.B],
+      format,
+      teams: groupNames({ groups }).flatMap((group) => groups[group]),
       groups,
-      matches: roundRobinMatches(groups),
+      matches: roundRobinMatches(groups, format),
       finals: [],
       createdAt: new Date().toISOString(),
     };
@@ -79,6 +126,7 @@
   }
 
   function matchResult(match) {
+    if (!match?.teamA || !match?.teamB) return null;
     const sets = completedSets(match);
     if (sets.length === 0) return null;
     const winsA = sets.filter((set) => set.a > set.b).length;
@@ -103,6 +151,7 @@
     const rows = (tournament.groups[group] || []).map((team) => ({
       teamId: team.id,
       team,
+      group,
       wins: 0,
       losses: 0,
       pointDiff: 0,
@@ -117,6 +166,7 @@
         if (!result) return;
         const a = byId.get(match.teamA);
         const b = byId.get(match.teamB);
+        if (!a || !b) return;
         a.pointsFor += result.pointsA;
         a.pointsAgainst += result.pointsB;
         a.pointDiff += result.diffA;
@@ -155,28 +205,56 @@
   }
 
   function allGroupMatchesComplete(tournament) {
-    return tournament.matches.every((match) => matchResult(match));
+    return tournament.matches.length > 0 && tournament.matches.every((match) => matchResult(match));
+  }
+
+  function allGroupStandings(tournament) {
+    return groupNames(tournament)
+      .flatMap((group) => standingsForGroup(group, tournament).map((row, index) => ({ ...row, groupRank: index + 1 })))
+      .sort((left, right) => {
+        return (
+          left.groupRank - right.groupRank ||
+          right.wins - left.wins ||
+          right.pointDiff - left.pointDiff ||
+          right.pointsFor - left.pointsFor ||
+          left.team.name.localeCompare(right.team.name, "de")
+        );
+      });
   }
 
   function finalsMatches(tournament) {
-    const tableA = standingsForGroup("A", tournament);
-    const tableB = standingsForGroup("B", tournament);
-    if (tableA.length < 3 || tableB.length < 3) return [];
+    const format = normalizeFormat(tournament.format);
+    const groups = groupNames(tournament);
     const existing = new Map((tournament.finals || []).map((match) => [match.slot, match]));
     const fromExisting = (slot, fallback) => {
       const current = existing.get(slot);
       return current ? { ...fallback, id: current.id, sets: current.sets || fallback.sets } : fallback;
     };
-    return [
-      fromExisting("semi1", makeFinal("semi1", "Halbfinale 1", tableA[0].teamId, tableB[1].teamId, 1)),
-      fromExisting("semi2", makeFinal("semi2", "Halbfinale 2", tableB[0].teamId, tableA[1].teamId, 1)),
-      fromExisting("place5", makeFinal("place5", "Spiel um Platz 5", tableA[2].teamId, tableB[2].teamId, 1)),
-      fromExisting("place3", makeFinal("place3", "Spiel um Platz 3", null, null, 1)),
-      fromExisting("final", makeFinal("final", "Finale", null, null, 3)),
-    ].map((match, index, finals) => hydrateFinalTeams(match, finals));
+
+    if (groups.length === 2 && (tournament.groups[groups[0]] || []).length >= 3 && (tournament.groups[groups[1]] || []).length >= 3) {
+      const tableA = standingsForGroup(groups[0], tournament);
+      const tableB = standingsForGroup(groups[1], tournament);
+      return [
+        fromExisting("semi1", makeFinal("semi1", "Halbfinale 1", tableA[0].teamId, tableB[1].teamId, 1, format)),
+        fromExisting("semi2", makeFinal("semi2", "Halbfinale 2", tableB[0].teamId, tableA[1].teamId, 1, format)),
+        fromExisting("place5", makeFinal("place5", "Spiel um Platz 5", tableA[2].teamId, tableB[2].teamId, 1, format)),
+        fromExisting("place3", makeFinal("place3", "Spiel um Platz 3", null, null, 1, format)),
+        fromExisting("final", makeFinal("final", "Finale", null, null, format.finalsBestOf, format)),
+      ].map((match, index, finals) => hydrateFinalTeams(match, finals));
+    }
+
+    const ranked = allGroupStandings(tournament);
+    const matches = [];
+    if (ranked.length >= 2) {
+      matches.push(fromExisting("final", makeFinal("final", "Finale", ranked[0].teamId, ranked[1].teamId, format.finalsBestOf, format)));
+    }
+    if (ranked.length >= 4) {
+      matches.push(fromExisting("place3", makeFinal("place3", "Spiel um Platz 3", ranked[2].teamId, ranked[3].teamId, 1, format)));
+    }
+    return matches;
   }
 
-  function makeFinal(slot, label, teamA, teamB, bestOf) {
+  function makeFinal(slot, label, teamA, teamB, bestOf, format) {
     return {
       id: uid("final"),
       phase: "final",
@@ -184,7 +262,7 @@
       group: "",
       label,
       bestOf,
-      target: 15,
+      target: format.targetScore,
       teamA,
       teamB,
       sets: Array.from({ length: bestOf }, () => ({ a: "", b: "" })),
@@ -197,10 +275,10 @@
     const result1 = semi1 ? matchResult(semi1) : null;
     const result2 = semi2 ? matchResult(semi2) : null;
     if (match.slot === "place3") {
-      return { ...match, teamA: result1?.loser || null, teamB: result2?.loser || null };
+      return { ...match, teamA: result1?.loser || match.teamA || null, teamB: result2?.loser || match.teamB || null };
     }
     if (match.slot === "final") {
-      return { ...match, teamA: result1?.winner || null, teamB: result2?.winner || null };
+      return { ...match, teamA: result1?.winner || match.teamA || null, teamB: result2?.winner || match.teamB || null };
     }
     return match;
   }
@@ -213,7 +291,7 @@
     const finalResult = final ? matchResult(final) : null;
     const place3Result = place3 ? matchResult(place3) : null;
     const place5Result = place5 ? matchResult(place5) : null;
-    return [
+    const ranked = [
       finalResult?.winner,
       finalResult?.loser,
       place3Result?.winner,
@@ -221,10 +299,14 @@
       place5Result?.winner,
       place5Result?.loser,
     ].filter(Boolean);
+    if (ranked.length) return ranked;
+    return finals.length ? [] : allGroupStandings(tournament).map((row) => row.teamId);
   }
 
   window.BeachTournament = {
-    GROUPS,
+    DEFAULT_FORMAT,
+    normalizeFormat,
+    groupNames,
     createTournament,
     standingsForGroup,
     matchResult,

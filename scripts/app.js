@@ -1,6 +1,8 @@
 (function () {
   const DEFAULT_TOURNAMENT_NAME = "1. WWS-Herren BeachCup";
   const DEFAULT_LOGO_SRC = BeachCupStore.DEFAULT_LOGO_SRC || "assets/wilde-wespen-logo.jpeg";
+  const DEFAULT_FORMAT = BeachTournament.DEFAULT_FORMAT || BeachCupStore.DEFAULT_FORMAT || { teamCount: 6, playersPerTeam: 2, groupCount: 2, targetScore: 15 };
+  const PLAYER_NAME_KEY = "wws-beachcup-player-name-v1";
   const SHARED_SAVE_DELAY = 750;
   const SAMPLE_PLAYERS = [
     "Alex Müller",
@@ -20,6 +22,7 @@
   let active = BeachCupStore.getActiveTournament();
   let settings = BeachCupStore.getSettings();
   let mode = "local";
+  let playerMode = false;
   let activeShared = null;
   let sharedError = "";
   const $ = (selector) => document.querySelector(selector);
@@ -28,6 +31,7 @@
   let sharedSaveInFlight = false;
   let sharedSaveQueued = false;
   let sharedSaveGeneration = 0;
+  let deferredSharedRemote = null;
 
   function refreshActive() {
     if (mode === "shared" && activeShared) {
@@ -37,6 +41,7 @@
         id: "",
         name: "Shared Lobby",
         players: [],
+        format: { ...DEFAULT_FORMAT },
         tournament: null,
         registrationLink: "",
         logoSrc: DEFAULT_LOGO_SRC,
@@ -76,6 +81,11 @@
     sharedSaveTimer = null;
     sharedSaveInFlight = false;
     sharedSaveQueued = false;
+    deferredSharedRemote = null;
+  }
+
+  function hasPendingSharedSave() {
+    return Boolean(sharedSaveTimer) || sharedSaveInFlight || sharedSaveQueued;
   }
 
   function flushSharedSave() {
@@ -114,8 +124,35 @@
         if (sharedSaveQueued && mode === "shared") {
           sharedSaveQueued = false;
           scheduleSharedSave(true);
+        } else {
+          applyDeferredSharedRemote();
         }
       });
+  }
+
+  function receiveSharedRemote(shared) {
+    if (mode !== "shared" || shared.id !== activeShared?.id) return;
+    if (active.version && shared.version <= active.version) return;
+    if (hasPendingSharedSave()) {
+      if (!deferredSharedRemote || shared.version >= deferredSharedRemote.version) {
+        deferredSharedRemote = shared;
+      }
+      return;
+    }
+    applySharedRemote(shared);
+  }
+
+  function applyDeferredSharedRemote() {
+    if (mode !== "shared" || !deferredSharedRemote || hasPendingSharedSave()) return;
+    const shared = deferredSharedRemote;
+    deferredSharedRemote = null;
+    if (active.version && shared.version <= active.version) return;
+    applySharedRemote(shared);
+  }
+
+  function applySharedRemote(shared) {
+    activeShared = shared;
+    render();
   }
 
   function cloneTournament(tournament) {
@@ -127,6 +164,7 @@
       id: active.id,
       name: active.name || DEFAULT_TOURNAMENT_NAME,
       players: active.players || [],
+      format: active.format || DEFAULT_FORMAT,
       tournament: active.tournament || null,
       registrationLink: active.registrationLink || "",
       logoSrc: active.logoSrc || DEFAULT_LOGO_SRC,
@@ -138,6 +176,7 @@
   async function init() {
     bindTabs();
     bindActions();
+    playerMode = getViewModeFromLocation() === "player";
     document.body.classList.toggle("dark", settings.dark);
     document.body.classList.toggle("beam", settings.beam);
     await openSharedLobbyFromUrl();
@@ -161,8 +200,13 @@
       addPlayer($("#playerName").value);
       $("#playerName").value = "";
     });
+    $("#playerSignupForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      addPlayer($("#playerSignupName").value, { rememberPlayer: true });
+      $("#playerSignupName").value = "";
+    });
     $("#samplePlayersButton").addEventListener("click", () => {
-      active.players = [...SAMPLE_PLAYERS];
+      active.players = samplePlayersForFormat();
       active.tournament = null;
       persistAndRender();
     });
@@ -231,10 +275,8 @@
     });
     $("#generateTournamentButton").addEventListener("click", generateTournament);
     $("#reshuffleButton").addEventListener("click", generateTournament);
-    $("#buildFinalsButton").addEventListener("click", () => {
-      if (!active.tournament) return;
-      active.tournament.finals = BeachTournament.finalsMatches(active.tournament);
-      persistAndRender();
+    ["teamCountInput", "playersPerTeamInput", "groupCountInput", "targetScoreInput"].forEach((id) => {
+      $(`#${id}`).addEventListener("change", updateFormatFromInputs);
     });
     $("#printButton").addEventListener("click", () => window.print());
     $("#darkModeButton").addEventListener("click", () => {
@@ -258,6 +300,7 @@
     });
     $("#jsonImportInput").addEventListener("change", importBackup);
     $("#copyShareLinkButton").addEventListener("click", copyShareLink);
+    $("#copyPlayerLinkButton").addEventListener("click", copyPlayerLink);
     $("#publishLocalButton").addEventListener("click", publishLocalTournament);
     $("#leaveSharedLobbyButton").addEventListener("click", () => leaveSharedLobby(true));
   }
@@ -287,14 +330,18 @@
     return SharedTournamentStore.normalizeShareCode(queryCode || hashCode || "");
   }
 
+  function getViewModeFromLocation() {
+    const queryParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    return String(queryParams.get("role") || queryParams.get("view") || hashParams.get("role") || hashParams.get("view") || "").toLowerCase();
+  }
+
   function subscribeToActiveSharedLobby() {
     if (!activeShared) return;
     SharedTournamentStore.subscribeToSharedTournament(
       activeShared.id,
       (shared) => {
-        if (mode !== "shared" || shared.id !== activeShared?.id) return;
-        activeShared = shared;
-        render();
+        receiveSharedRemote(shared);
       },
       () => {
         sharedError = "Dieses geteilte Turnier wurde gelöscht.";
@@ -357,7 +404,7 @@
   function replaceLobbyUrl(shareCode) {
     const url = new URL(window.location.href);
     url.search = "";
-    url.hash = `lobby=${encodeURIComponent(shareCode)}`;
+    url.hash = playerMode ? `lobby=${encodeURIComponent(shareCode)}&role=player` : `lobby=${encodeURIComponent(shareCode)}`;
     window.history.replaceState({}, "", url.toString());
   }
 
@@ -375,6 +422,17 @@
       await navigator.clipboard.writeText(link);
     } else {
       prompt("Link zum Turnier:", link);
+    }
+  }
+
+  async function copyPlayerLink() {
+    if (!activeShared) return;
+    const url = new URL(SharedTournamentStore.getShareLink(activeShared));
+    url.hash = `lobby=${encodeURIComponent(activeShared.shareCode)}&role=player`;
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url.toString());
+    } else {
+      prompt("Spieler-Link zum Turnier:", url.toString());
     }
   }
 
@@ -403,21 +461,37 @@
     render();
   }
 
-  function addPlayer(name) {
+  function samplePlayersForFormat() {
+    const totalPlayers = currentFormat().totalPlayers;
+    return Array.from({ length: totalPlayers }, (_, index) => SAMPLE_PLAYERS[index] || `Spieler ${index + 1}`);
+  }
+
+  function addPlayer(name, options = {}) {
     const trimmed = name.trim();
-    if (!trimmed || active.players.includes(trimmed) || active.players.length >= 12) return;
+    const format = currentFormat();
+    if (!trimmed) return;
+    if (active.players.includes(trimmed)) {
+      if (options.rememberPlayer) {
+        localStorage.setItem(PLAYER_NAME_KEY, trimmed);
+        renderPlayerView();
+      }
+      return;
+    }
+    if (active.players.length >= format.totalPlayers) return;
     active.players.push(trimmed);
+    if (options.rememberPlayer) localStorage.setItem(PLAYER_NAME_KEY, trimmed);
     active.tournament = null;
     persistAndRender();
   }
 
   function generateTournament() {
-    if (active.players.length !== 12) {
-      alert("Für die Auslosung werden genau 12 Teilnehmer benötigt.");
+    const format = currentFormat();
+    if (active.players.length !== format.totalPlayers) {
+      alert(`Für die Auslosung werden genau ${format.totalPlayers} Teilnehmer benötigt.`);
       return;
     }
     if (active.tournament && !confirmDestructive("Spielplan zurücksetzen")) return;
-    active.tournament = BeachTournament.createTournament(active.players);
+    active.tournament = BeachTournament.createTournament(active.players, format);
     persistAndRender();
     showTab("teams");
   }
@@ -425,9 +499,12 @@
   function render() {
     refreshActive();
     renderHeader();
+    renderAccessMode();
     renderTournamentManager();
+    renderFormatControls();
     renderLogoManager();
     renderPlayers();
+    renderPlayerView();
     renderRegistrationLink();
     renderTeams();
     renderMatches();
@@ -439,10 +516,56 @@
   function renderHeader() {
     const title = active.name || DEFAULT_TOURNAMENT_NAME;
     const logoSrc = active.logoSrc || DEFAULT_LOGO_SRC;
+    const format = currentFormat();
     document.title = title;
+    $("#formatEyebrow").textContent = `Beachvolleyball · ${format.totalPlayers} Spieler · ${format.teamCount} Teams`;
     $("#tournamentTitle").textContent = title;
     $("#tournamentLogo").src = logoSrc;
     $("#tournamentLogo").alt = `${title} Logo`;
+  }
+
+  function renderAccessMode() {
+    document.body.classList.toggle("player-mode", playerMode);
+    if (!playerMode) return;
+    const activePanel = document.querySelector(".tab-panel.is-visible")?.id;
+    if (activePanel !== "player") showTab("player");
+  }
+
+  function currentFormat() {
+    const normalized = BeachTournament.normalizeFormat(active.format || DEFAULT_FORMAT);
+    active.format = normalized;
+    return normalized;
+  }
+
+  function updateFormatFromInputs() {
+    const next = BeachTournament.normalizeFormat({
+      teamCount: $("#teamCountInput").value,
+      playersPerTeam: $("#playersPerTeamInput").value,
+      groupCount: $("#groupCountInput").value,
+      targetScore: $("#targetScoreInput").value,
+    });
+    const previous = currentFormat();
+    active.format = next;
+    if (
+      active.tournament &&
+      (previous.teamCount !== next.teamCount ||
+        previous.playersPerTeam !== next.playersPerTeam ||
+        previous.groupCount !== next.groupCount ||
+        previous.targetScore !== next.targetScore)
+    ) {
+      active.tournament = null;
+    }
+    persistAndRender();
+  }
+
+  function renderFormatControls() {
+    const format = currentFormat();
+    $("#teamCountInput").value = format.teamCount;
+    $("#playersPerTeamInput").value = format.playersPerTeam;
+    $("#groupCountInput").value = format.groupCount;
+    $("#targetScoreInput").value = format.targetScore;
+    $("#totalPlayersLabel").textContent = `${format.totalPlayers} Spieler`;
+    document.querySelector(".action-card p").textContent = `Bereit bei genau ${format.totalPlayers} Teilnehmern.`;
   }
 
   function renderTournamentManager() {
@@ -458,6 +581,7 @@
     $("#newSharedTournamentButton").disabled = mode === "shared";
     $("#sharedLobbyBox").classList.toggle("is-hidden", mode !== "shared" && !SharedTournamentStore.isConfigured());
     $("#copyShareLinkButton").hidden = mode !== "shared" || !activeShared;
+    $("#copyPlayerLinkButton").hidden = mode !== "shared" || !activeShared;
     $("#leaveSharedLobbyButton").hidden = mode !== "shared";
     $("#publishLocalButton").hidden = mode !== "local";
     $("#publishLocalButton").disabled = !SharedTournamentStore.isConfigured();
@@ -489,7 +613,8 @@
   }
 
   function renderPlayers() {
-    $("#playerCount").textContent = `${active.players.length}/12`;
+    const format = currentFormat();
+    $("#playerCount").textContent = `${active.players.length}/${format.totalPlayers}`;
     $("#playerList").innerHTML = active.players
       .map((player, index) => `<li>${escapeHtml(player)} <button data-remove="${index}" type="button">Entfernen</button></li>`)
       .join("");
@@ -499,6 +624,46 @@
         active.tournament = null;
         persistAndRender();
       });
+    });
+  }
+
+  function renderPlayerView() {
+    const format = currentFormat();
+    const rememberedName = localStorage.getItem(PLAYER_NAME_KEY) || "";
+    $("#playerViewCount").textContent = `${active.players.length}/${format.totalPlayers} Spieler`;
+    $("#publicPlayerList").innerHTML = active.players.length
+      ? active.players.map((player) => `<li>${escapeHtml(player)}</li>`).join("")
+      : `<li>Noch keine Spieler eingetragen</li>`;
+    if (!$("#playerSignupName").value && rememberedName && !active.players.includes(rememberedName)) {
+      $("#playerSignupName").value = rememberedName;
+    }
+
+    const team = active.tournament?.teams?.find((item) => item.players.includes(rememberedName));
+    if (!active.tournament) {
+      $("#playerTeamEditor").innerHTML = emptyMessage("Nach der Auslosung erscheint hier dein Team.");
+      return;
+    }
+    if (!rememberedName || !team) {
+      $("#playerTeamEditor").innerHTML = emptyMessage("Trage dich mit deinem Namen ein, um dein Team zu bearbeiten.");
+      return;
+    }
+    $("#playerTeamEditor").innerHTML = `<div class="player-team-card">
+      <p><strong>${teamLabel(team)}</strong></p>
+      <label>
+        Teamname
+        <input class="team-name-input" id="playerTeamNameInput" type="text" value="${escapeHtml(team.name)}" placeholder="Teamname">
+      </label>
+    </div>`;
+    $("#playerTeamNameInput").addEventListener("input", (event) => {
+      updateTeamName(team.id, event.target.value);
+      saveActive();
+      renderLive();
+    });
+    $("#playerTeamNameInput").addEventListener("change", (event) => {
+      const nextName = event.target.value.trim() || team.name || "Team";
+      event.target.value = nextName;
+      updateTeamName(team.id, nextName);
+      persistAndRender({ immediate: true });
     });
   }
 
@@ -525,7 +690,7 @@
       $("#groupsView").innerHTML = emptyMessage("Noch keine Teams ausgelost.");
       return;
     }
-    $("#groupsView").innerHTML = BeachTournament.GROUPS.map((group) => {
+    $("#groupsView").innerHTML = BeachTournament.groupNames(tournament).map((group) => {
       const teams = tournament.groups[group] || [];
       return `<article class="group-card">
         <h3>Gruppe ${group}</h3>
@@ -607,7 +772,7 @@
       $("#standingsView").innerHTML = emptyMessage("Noch keine Tabelle verfügbar.");
       return;
     }
-    $("#standingsView").innerHTML = BeachTournament.GROUPS.map((group) => {
+    $("#standingsView").innerHTML = BeachTournament.groupNames(tournament).map((group) => {
       const rows = BeachTournament.standingsForGroup(group, tournament);
       return `<article class="standing-card">
         <h3>Gruppe ${group}</h3>
@@ -756,16 +921,18 @@
       });
       return refereeTeam ? plainTeamLabel(refereeTeam) : "noch offen";
     }
-    const tableA = BeachTournament.standingsForGroup("A", tournament);
-    const tableB = BeachTournament.standingsForGroup("B", tournament);
+    const groups = BeachTournament.groupNames(tournament);
+    const tableA = BeachTournament.standingsForGroup(groups[0] || "A", tournament);
+    const tableB = BeachTournament.standingsForGroup(groups[1] || "B", tournament);
     const semi1 = (tournament.finals || []).find((item) => item.slot === "semi1");
     const place3 = (tournament.finals || []).find((item) => item.slot === "place3");
     const place5 = (tournament.finals || []).find((item) => item.slot === "place5");
     const semi1Result = semi1 ? BeachTournament.matchResult(semi1) : null;
     const place3Result = place3 ? BeachTournament.matchResult(place3) : null;
     const place5Result = place5 ? BeachTournament.matchResult(place5) : null;
-    if (match.slot === "semi1") return tableA[2]?.team ? plainTeamLabel(tableA[2].team) : "3. Gruppe A";
-    if (match.slot === "semi2") return tableB[2]?.team ? plainTeamLabel(tableB[2].team) : "3. Gruppe B";
+    if (!semi1 && !place5) return "noch offen";
+    if (match.slot === "semi1") return tableA[2]?.team ? plainTeamLabel(tableA[2].team) : `3. Gruppe ${groups[0] || "A"}`;
+    if (match.slot === "semi2") return tableB[2]?.team ? plainTeamLabel(tableB[2].team) : `3. Gruppe ${groups[1] || "B"}`;
     if (match.slot === "place5") return semi1Result?.loser ? textTeamName(semi1Result.loser, tournament) : "noch offen: Verlierer Halbfinale 1";
     if (match.slot === "place3") return place5Result?.loser ? textTeamName(place5Result.loser, tournament) : "noch offen: Verlierer Spiel um Platz 5";
     if (match.slot === "final") return place3Result?.winner ? textTeamName(place3Result.winner, tournament) : "noch offen: Sieger Spiel um Platz 3";
@@ -836,7 +1003,7 @@
 
   function reportLines(tournament) {
     const lines = [`${active.name || DEFAULT_TOURNAMENT_NAME} Ergebnisse`, `Stand: ${new Date().toLocaleString("de-DE")}`, ""];
-    BeachTournament.GROUPS.forEach((group) => {
+    BeachTournament.groupNames(tournament).forEach((group) => {
       lines.push(`Gruppe ${group}`);
       BeachTournament.standingsForGroup(group, tournament).forEach((row, index) => {
         lines.push(`${index + 1}. ${plainTeamLabel(row.team)} · S ${row.wins} · N ${row.losses} · Diff ${row.pointDiff} · Punkte ${row.pointsFor}:${row.pointsAgainst}`);
@@ -923,6 +1090,7 @@
         id: backup.id || undefined,
         name: backup.name || `${DEFAULT_TOURNAMENT_NAME} Import`,
         players: backup.players || [],
+        format: BeachTournament.normalizeFormat(backup.format || DEFAULT_FORMAT),
         tournament: backup.tournament || null,
         registrationLink: backup.registrationLink || "",
         logoSrc: backup.logoSrc || DEFAULT_LOGO_SRC,
@@ -934,6 +1102,7 @@
       id: undefined,
       name: `${DEFAULT_TOURNAMENT_NAME} Import`,
       players: backup.players || [],
+      format: BeachTournament.normalizeFormat(backup.format || DEFAULT_FORMAT),
       tournament: backup.tournament || null,
       registrationLink: backup.registrationLink || "",
       logoSrc: backup.logoSrc || DEFAULT_LOGO_SRC,

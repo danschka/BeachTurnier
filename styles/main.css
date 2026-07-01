@@ -186,6 +186,16 @@ body.dark .header-actions .primary-button:hover {
   background: var(--primary-dark);
 }
 
+body.player-mode .header-actions,
+body.player-mode .live-strip,
+body.player-mode .tabs .tab:not([data-tab="player"]) {
+  display: none !important;
+}
+
+body.player-mode .tabs {
+  grid-template-columns: minmax(160px, 240px);
+}
+
 .app-shell {
   width: min(1180px, calc(100% - 28px));
   margin: 0 auto 40px;
@@ -193,20 +203,37 @@ body.dark .header-actions .primary-button:hover {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
 
 .tab {
   min-width: 0;
+  border-color: #9ab0b5;
+  color: #102f35;
+  background: #e7f2f0;
   font-weight: 700;
+}
+
+.tab:hover {
+  background: #d8ece9;
 }
 
 .tab.is-active {
   color: #fff;
   background: var(--ink);
   border-color: var(--ink);
+}
+
+body.dark .tab {
+  border-color: #3f555b;
+  color: var(--ink);
+  background: #202c2f;
+}
+
+body.dark .tab:hover {
+  background: #26383c;
 }
 
 .live-strip,
@@ -270,6 +297,7 @@ body.dark .panel {
 .setup-layout,
 .setup-main,
 .setup-side,
+.player-view-layout,
 .groups-grid,
 .standings-grid,
 .finals-layout {
@@ -339,10 +367,15 @@ body.dark .panel {
 }
 
 .setup-status-grid,
-.setup-form-grid {
+.setup-form-grid,
+.format-grid {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.format-card strong {
+  color: var(--primary-dark);
 }
 
 .setup-toolbar {
@@ -474,6 +507,15 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+}
+
+.readonly-list li {
+  justify-content: flex-start;
+}
+
+.player-team-card {
+  display: grid;
   gap: 10px;
 }
 
@@ -746,6 +788,8 @@ body.beam .live-strip strong {
   .setup-layout,
   .setup-status-grid,
   .setup-form-grid,
+  .format-grid,
+  .player-view-layout,
   .self-registration,
   .groups-grid,
   .standings-grid,

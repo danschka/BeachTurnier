@@ -4,6 +4,7 @@
   const LEGACY_KEY = "beach-cup-state-v1";
   const DEFAULT_TOURNAMENT_NAME = "1. WWS-Herren BeachCup";
   const DEFAULT_LOGO_SRC = "assets/wilde-wespen-logo.jpeg";
+  const DEFAULT_FORMAT = { teamCount: 6, playersPerTeam: 2, groupCount: 2, targetScore: 15 };
 
   function readJson(key, fallback) {
     try {
@@ -28,6 +29,7 @@
       id: createId("tournament"),
       name,
       players: [],
+      format: { ...DEFAULT_FORMAT },
       tournament: null,
       registrationLink: "",
       logoSrc: DEFAULT_LOGO_SRC,
@@ -138,6 +140,7 @@
       id: tournament.id || createId("tournament"),
       name: tournament.name || DEFAULT_TOURNAMENT_NAME,
       players: Array.isArray(tournament.players) ? tournament.players : [],
+      format: { ...DEFAULT_FORMAT, ...(tournament.format || {}) },
       logoSrc: tournament.logoSrc || DEFAULT_LOGO_SRC,
       updatedAt: now,
       createdAt: tournament.createdAt || now,
@@ -199,5 +202,6 @@
     getSettings,
     saveSettings,
     DEFAULT_LOGO_SRC,
+    DEFAULT_FORMAT,
   };
 })();

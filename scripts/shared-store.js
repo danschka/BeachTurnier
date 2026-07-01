@@ -3,7 +3,6 @@
   let client = null;
   let activeSubscription = null;
   let activeTournamentId = "";
-  let suppressNextRemote = false;
 
   function getConfig() {
     return window.WWS_SUPABASE_CONFIG || {};
@@ -60,6 +59,7 @@
       id: localTournament.id,
       name: localTournament.name,
       players: localTournament.players || [],
+      format: localTournament.format || BeachCupStore.DEFAULT_FORMAT,
       tournament: localTournament.tournament || null,
       registrationLink: localTournament.registrationLink || "",
       logoSrc: localTournament.logoSrc || BeachCupStore.DEFAULT_LOGO_SRC,
@@ -114,16 +114,13 @@
     await ensureAnonymousSession();
     const supabase = getClient();
     const state = localToSharedState(activeTournament);
-    let query = supabase
+    const query = supabase
       .from(TABLE)
       .update({
         name: activeTournament.name || state.name || "Shared Tournament",
         state,
       })
       .eq("id", activeTournament.id);
-    if (activeTournament.version) {
-      query = query.eq("version", activeTournament.version);
-    }
     const { data, error } = await query
       .select("id, share_code, name, config, status, state, version, created_at, updated_at")
       .maybeSingle();
@@ -131,7 +128,6 @@
     if (!data) {
       throw new Error("Dieses Turnier wurde gerade in einer anderen Sitzung geändert. Bitte den aktuellen Stand abwarten und erneut versuchen.");
     }
-    suppressNextRemote = true;
     return normalizeSharedRow(data);
   }
 
@@ -157,10 +153,6 @@
             return;
           }
           if (!payload.new || payload.new.id !== activeTournamentId) return;
-          if (suppressNextRemote) {
-            suppressNextRemote = false;
-            return;
-          }
           onChange(normalizeSharedRow(payload.new));
         }
       )

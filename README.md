@@ -23,7 +23,8 @@ Dieses Projekt ist eine reine statische Website. Es braucht fuer GitHub Pages ke
 - Turniertitel und Logo pro Turnier anpassen
 - Geteilte Online-Lobbys mit Supabase, Ausrichterrolle und Spielerrechten
 - Zufällige Team- und Gruppenauslosung
-- Teamnamen nach der Auslosung bearbeiten
+- Teamnamen nach der Auslosung bis zum Turnierstart bearbeiten
+- Startbutton für den Ausrichter, der Teamnamen sperrt
 - Gruppenphase mit Tabellen nach Siegen, Punktedifferenz, erzielten Punkten und direktem Vergleich
 - Automatische KO-Phase mit Halbfinals, Platz 5, Platz 3 und Finale als Best-of-3
 - Live-Spielplan mit aktuellem und nächstem Spiel
@@ -74,7 +75,7 @@ https://<github-pages-domain>/<projektname>/#lobby=<share_code>
 
 Alte Links mit `?lobby=<share_code>` werden weiterhin gelesen und nach dem Oeffnen automatisch auf die neue Hash-Form umgestellt. Die Hash-Form ist fuer statische Hosts wie GitHub Pages robuster, weil sie keine Serverroute benoetigt.
 
-Der Link ist ein Spielerlink. Wer ihn erhält, kann die Lobby lesen, den eigenen Namen eintragen, den eigenen Namen vor der Auslosung wieder entfernen und nach der Auslosung den eigenen Teamnamen bearbeiten. Nur der Browser, der die Lobby erstellt hat, ist Ausrichter und darf Teilnehmerliste, Auslosung, Ergebnisse, Einstellungen, Spielplan und Löschen verwalten.
+Der Link ist ein Spielerlink. Wer ihn erhält, kann die Lobby lesen, den eigenen Namen eintragen, den eigenen Namen vor der Auslosung wieder entfernen und nach der Auslosung bis zum Turnierstart den eigenen Teamnamen bearbeiten. Nur der Browser, der die Lobby erstellt hat, ist Ausrichter und darf Teilnehmerliste, Auslosung, Turnierstart, Ergebnisse, Einstellungen, Spielplan und Löschen verwalten.
 
 ### Supabase einrichten
 
@@ -164,6 +165,8 @@ Test A: Rollen und erlaubte Schreibrechte
 8. Browser A lost Teams aus.
 9. Browser B kann nur den Teamnamen des eigenen Teams ändern.
 10. Browser B erhält eine Meldung, wenn der Teamname bereits vergeben ist.
+11. Browser A startet das Turnier.
+12. Browser B kann den Teamnamen danach nicht mehr ändern.
 
 Test B: Zwei getrennte Shared Lobbies
 

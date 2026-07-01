@@ -388,6 +388,10 @@ begin
     raise exception 'Teams have not been drawn yet';
   end if;
 
+  if coalesce(v_tournament.state#>>'{tournament,startedAt}', '') <> '' then
+    raise exception 'Team names cannot be changed after the tournament has started';
+  end if;
+
   v_teams := coalesce(v_tournament.state#>'{tournament,teams}', '[]'::jsonb);
 
   select team_value into v_team

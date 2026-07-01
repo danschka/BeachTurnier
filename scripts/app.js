@@ -120,6 +120,9 @@
       })
       .catch((error) => {
         if (saveGeneration !== sharedSaveGeneration) return;
+        if (!sharedSaveQueued) {
+          sharedHasLocalChanges = false;
+        }
         alert(`Shared Lobby konnte nicht gespeichert werden: ${error.message}`);
       })
       .finally(() => {
@@ -251,6 +254,7 @@
     });
     $("#generateTournamentButton").addEventListener("click", generateTournament);
     $("#reshuffleButton").addEventListener("click", generateTournament);
+    $("#startTournamentButton").addEventListener("click", startTournament);
     $("#buildFinalsButton").addEventListener("click", () => {
       if (!active.tournament) return;
       active.tournament.finals = BeachTournament.finalsMatches(active.tournament);
@@ -460,10 +464,22 @@
       alert("Für die Auslosung werden genau 12 Teilnehmer benötigt.");
       return;
     }
+    if (isTournamentStarted()) {
+      alert("Das Turnier wurde bereits gestartet. Neu auslosen ist nicht mehr moeglich.");
+      return;
+    }
     if (active.tournament && !confirmDestructive("Spielplan zurücksetzen")) return;
     active.tournament = BeachTournament.createTournament(active.players);
     persistAndRender();
     showTab("teams");
+  }
+
+  function startTournament() {
+    if (!active.tournament || !isSharedHost()) return;
+    if (!confirm("Turnier starten? Danach koennen Teamnamen nicht mehr geaendert werden.")) return;
+    active.tournament.startedAt = new Date().toISOString();
+    persistAndRender({ immediate: true });
+    showTab("matches");
   }
 
   function render() {
@@ -528,6 +544,7 @@
       "#clearAllButton",
       "#generateTournamentButton",
       "#reshuffleButton",
+      "#startTournamentButton",
       "#buildFinalsButton",
       "#renameTournamentButton",
       "#tournamentNameInput",
@@ -547,6 +564,17 @@
     const canEditPlayers = host || !active.tournament;
     playerInput.disabled = !canEditPlayers;
     playerSubmit.disabled = !canEditPlayers;
+    renderStartControls(host);
+  }
+
+  function renderStartControls(host) {
+    const hasTournament = Boolean(active.tournament);
+    const started = isTournamentStarted();
+    $("#startTournamentButton").disabled = !host || !hasTournament || started;
+    $("#reshuffleButton").disabled = !host || !hasTournament || started;
+    $("#tournamentStartStatus").textContent = !hasTournament
+      ? "Noch keine Teams"
+      : (started ? "Turnier gestartet" : "Teamnamen offen");
   }
 
   function importLogoFile(event) {
@@ -640,11 +668,16 @@
   }
 
   function canEditTeamName(team) {
+    if (isTournamentStarted()) return false;
     if (isSharedHost()) return true;
     if (!active.tournament || !team) return false;
     const owners = active.playerOwners || {};
     const currentUserId = SharedTournamentStore.getCurrentUserId?.() || "";
     return team.players.some((player) => owners[player] === currentUserId);
+  }
+
+  function isTournamentStarted() {
+    return Boolean(active.tournament?.startedAt);
   }
 
   function bindTeamNameInputs() {
@@ -842,6 +875,9 @@
     const match = matches.find((item) => item.id === input.dataset.match);
     if (!match) return;
     match.sets[Number(input.dataset.set)][input.dataset.side] = input.value;
+    if (active.tournament) {
+      active.tournament.finals = BeachTournament.finalsMatches(active.tournament);
+    }
   }
 
   function scheduleScoreRender() {
@@ -856,10 +892,7 @@
   }
 
   function commitScores() {
-    if (active.tournament) {
-      active.tournament.finals = BeachTournament.finalsMatches(active.tournament);
-    }
-    persistAndRender();
+    render();
   }
 
   function refereeOverview(matches, tournament) {

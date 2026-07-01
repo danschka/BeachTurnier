@@ -144,7 +144,7 @@
     const state = localToSharedState(activeTournament);
     const { data, error } = await supabase.rpc("save_shared_lobby_as_host", {
       p_tournament_id: activeTournament.id,
-      p_expected_version: activeTournament.version || null,
+      p_expected_version: null,
       p_name: activeTournament.name || state.name || "Shared Tournament",
       p_state: state,
     });

@@ -533,6 +533,22 @@ textarea {
   font-weight: 800;
 }
 
+.player-progress-stack,
+.player-finals-list {
+  display: grid;
+  gap: 12px;
+}
+
+.player-finals-list h4 {
+  margin: 0;
+}
+
+.referee-row.is-own-team,
+.reversed-ranking .is-own-team {
+  background: rgba(11, 111, 124, 0.1);
+  font-weight: 800;
+}
+
 .player-list li button {
   flex: 0 0 auto;
 }

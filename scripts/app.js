@@ -784,7 +784,7 @@
       </label>
     </div>`;
     renderPlayerTask(team);
-    renderPlayerStandings(team);
+    renderPlayerProgress(team);
     if (!canEdit) return;
     $("#playerTeamNameInput").addEventListener("input", (event) => {
       if (isSharedPlayer()) return;
@@ -819,28 +819,55 @@
 
   function renderPlayerTask(team) {
     const tournament = active.tournament;
-    const task = nextPlayerTask(team, tournament);
-    if (!task) {
+    const taskInfo = playerTaskInfo(team, tournament);
+    if (!taskInfo.nextTask) {
       $("#playerTaskView").innerHTML = emptyMessage("Aktuell ist keine Aufgabe fuer dein Team offen.");
       return;
     }
-    const label = task.kind === "play" ? "Naechstes Spiel" : "Naechstes Schiedsgericht";
+    const label = taskLabel(taskInfo);
+    const task = taskInfo.nextTask;
     $("#playerTaskView").innerHTML = `<div class="player-task-card">
       <p><strong>${label}</strong></p>
+      ${taskInfo.currentMatch && task.match.id !== taskInfo.currentMatch.id ? `<p class="muted">Aktuell frei · laufend: ${escapeHtml(taskInfo.currentMatch.label)}</p>` : ""}
       <p>${escapeHtml(task.match.label)}</p>
       <p>${matchTeamName(task.match.teamA, tournament)}<br>vs<br>${matchTeamName(task.match.teamB, tournament)}</p>
       <p class="muted">Schiri: ${refereeLabel(task.match, tournament)}</p>
     </div>`;
   }
 
-  function nextPlayerTask(team, tournament) {
+  function playerTaskInfo(team, tournament) {
     const openMatches = [...(tournament.matches || []), ...(tournament.finals || [])]
       .filter((match) => match.teamA && match.teamB && !BeachTournament.matchResult(match));
+    const currentMatch = openMatches[0] || null;
+    let nextTask = null;
     for (const match of openMatches) {
-      if (match.teamA === team.id || match.teamB === team.id) return { kind: "play", match };
-      if (refereeTeamIdForMatch(match, tournament) === team.id) return { kind: "referee", match };
+      if (match.teamA === team.id || match.teamB === team.id) {
+        nextTask = { kind: "play", match };
+        break;
+      }
+      if (refereeTeamIdForMatch(match, tournament) === team.id) {
+        nextTask = { kind: "referee", match };
+        break;
+      }
     }
-    return null;
+    return { currentMatch, nextTask };
+  }
+
+  function taskLabel(taskInfo) {
+    const { currentMatch, nextTask } = taskInfo;
+    if (currentMatch && nextTask.match.id === currentMatch.id) {
+      return nextTask.kind === "play" ? "Jetzt spielen" : "Jetzt Schiedsgericht";
+    }
+    return nextTask.kind === "play" ? "Naechstes Spiel" : "Naechstes Schiedsgericht";
+  }
+
+  function renderPlayerProgress(team) {
+    const tournament = active.tournament;
+    if (isTournamentComplete(tournament)) {
+      renderPlayerFinalRanking(team);
+      return;
+    }
+    renderPlayerStandings(team);
   }
 
   function renderPlayerStandings(team) {
@@ -853,7 +880,8 @@
       return;
     }
     const rows = BeachTournament.standingsForGroup(group, tournament);
-    $("#playerStandingsView").innerHTML = `<table class="compact-table">
+    $("#playerStandingsView").innerHTML = `<div class="player-progress-stack">
+      <table class="compact-table">
       <thead><tr><th>#</th><th>Team</th><th>S</th><th>N</th><th>Diff</th><th>Punkte</th></tr></thead>
       <tbody>${rows.map((row, index) => `<tr${row.teamId === team.id ? " class=\"is-own-team\"" : ""}>
         <td>${index + 1}</td>
@@ -863,7 +891,47 @@
         <td>${row.pointDiff}</td>
         <td>${row.pointsFor}:${row.pointsAgainst}</td>
       </tr>`).join("")}</tbody>
-    </table>`;
+      </table>
+      ${playerFinalsOverview(team, tournament)}
+    </div>`;
+  }
+
+  function playerFinalsOverview(team, tournament) {
+    const finals = tournament.finals || [];
+    if (!finals.length) return `<p class="muted">KO-Phase noch nicht gestartet.</p>`;
+    return `<div class="player-finals-list">
+      <h4>KO-Phase</h4>
+      ${finals.map((match) => {
+        const result = BeachTournament.matchResult(match);
+        const own = match.teamA === team.id || match.teamB === team.id;
+        const label = result ? setSummary(match) : "offen";
+        return `<div class="referee-row${own ? " is-own-team" : ""}">
+          <strong>${escapeHtml(match.label)}</strong>
+          <span>${matchTeamName(match.teamA, tournament)} vs ${matchTeamName(match.teamB, tournament)} · ${escapeHtml(label)}</span>
+        </div>`;
+      }).join("")}
+    </div>`;
+  }
+
+  function renderPlayerFinalRanking(team) {
+    const tournament = active.tournament;
+    const teamMap = teamLookup(tournament);
+    const ranked = BeachTournament.ranking(tournament);
+    const reversed = ranked.map((teamId, index) => ({ teamId, place: index + 1 })).reverse();
+    $("#playerStandingsView").innerHTML = reversed.length
+      ? `<ol class="ranking-list reversed-ranking">${reversed.map((item) => `<li${item.teamId === team.id ? " class=\"is-own-team\"" : ""}>
+          ${item.place}. Platz: ${teamLabel(teamMap.get(item.teamId))}
+        </li>`).join("")}</ol>`
+      : emptyMessage("Endplatzierung noch nicht verfuegbar.");
+  }
+
+  function isTournamentComplete(tournament) {
+    const finals = tournament?.finals || [];
+    return finals.length > 0 && finals.every((match) => BeachTournament.matchResult(match));
+  }
+
+  function setSummary(match) {
+    return (match.sets || []).map(setText).filter(Boolean).join(", ") || "offen";
   }
 
   function renderRegistrationLink() {
@@ -1189,6 +1257,8 @@
     if (match.phase === "group") {
       const refereeTeam = (tournament.groups[match.group] || []).find((team) => {
         return team.id !== match.teamA && team.id !== match.teamB;
+      }) || (tournament.teams || []).find((team) => {
+        return team.group === match.group && team.id !== match.teamA && team.id !== match.teamB;
       });
       return refereeTeam?.id || "";
     }

@@ -50,17 +50,19 @@ input,
 select,
 textarea {
   font: inherit;
+  font-size: 1rem;
 }
 
 button,
 .file-button {
-  min-height: 42px;
+  min-height: 46px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 14px;
   color: var(--ink);
   background: var(--surface);
   cursor: pointer;
+  touch-action: manipulation;
   transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 
@@ -206,10 +208,16 @@ body.player-mode .tabs {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding-top: 4px;
+  background: linear-gradient(to bottom, var(--bg), rgba(247, 242, 232, 0));
 }
 
 .tab {
   min-width: 0;
+  min-height: 46px;
   border-color: #9ab0b5;
   color: #102f35;
   background: #e7f2f0;
@@ -234,6 +242,10 @@ body.dark .tab {
 
 body.dark .tab:hover {
   background: #26383c;
+}
+
+body.dark .tabs {
+  background: linear-gradient(to bottom, var(--bg), rgba(17, 23, 25, 0));
 }
 
 .live-strip,
@@ -417,12 +429,18 @@ body.dark .panel {
   margin-top: 12px;
 }
 
+.share-link-grid label {
+  min-width: 0;
+}
+
 .share-link-grid[hidden] {
   display: none;
 }
 
 .share-link-grid input {
   font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tournament-manager strong {
@@ -484,6 +502,7 @@ input,
 select,
 textarea {
   width: 100%;
+  min-height: 46px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 11px 12px;
@@ -658,7 +677,7 @@ textarea {
 
 .set-row {
   display: grid;
-  grid-template-columns: 1fr 82px 82px;
+  grid-template-columns: minmax(58px, 1fr) minmax(64px, 82px) minmax(64px, 82px);
   align-items: center;
   gap: 8px;
 }
@@ -671,7 +690,10 @@ textarea {
 
 .set-row input {
   min-width: 0;
+  min-height: 48px;
   text-align: center;
+  font-size: 1.05rem;
+  font-weight: 800;
 }
 
 .subsection {
@@ -704,8 +726,20 @@ textarea {
 
 table {
   width: 100%;
+  min-width: 520px;
   border-collapse: collapse;
   overflow: hidden;
+}
+
+.standing-card,
+.player-progress-stack {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.compact-table {
+  min-width: 480px;
 }
 
 th,
@@ -773,6 +807,28 @@ body.beam .live-strip strong {
   font-size: clamp(1.4rem, 2.4vw, 2.4rem);
 }
 
+@media (max-width: 1100px) {
+  .app-shell {
+    width: min(100% - 24px, 1180px);
+  }
+
+  .setup-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
+  }
+
+  .match-card {
+    grid-template-columns: minmax(130px, 0.72fr) minmax(190px, 1fr);
+  }
+
+  .score-inputs {
+    grid-column: 1 / -1;
+  }
+
+  .set-row {
+    grid-template-columns: minmax(80px, 1fr) minmax(72px, 120px) minmax(72px, 120px);
+  }
+}
+
 @media (max-width: 860px) {
   .app-header,
   .section-title {
@@ -809,6 +865,7 @@ body.beam .live-strip strong {
     overflow-x: auto;
     padding-bottom: 4px;
     scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
   }
 
   .tab {
@@ -848,6 +905,10 @@ body.beam .live-strip strong {
     align-items: stretch;
   }
 
+  .shared-lobby-box .button-row button {
+    flex: 1 1 180px;
+  }
+
   .setup-toolbar {
     justify-content: flex-start;
   }
@@ -865,7 +926,28 @@ body.beam .live-strip strong {
   }
 }
 
+@media (max-width: 700px) {
+  .live-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-title {
+    width: 100%;
+  }
+
+  .match-meta,
+  .match-teams {
+    overflow-wrap: anywhere;
+  }
+}
+
 @media (max-width: 520px) {
+  .button-row,
+  .header-actions,
+  .export-grid {
+    gap: 8px;
+  }
+
   button,
   .file-button {
     width: 100%;
@@ -888,6 +970,11 @@ body.beam .live-strip strong {
   .brand-title {
     align-items: center;
     gap: 10px;
+  }
+
+  .tab {
+    min-width: 104px;
+    padding-inline: 10px;
   }
 
   .eyebrow {
@@ -947,12 +1034,20 @@ body.beam .live-strip strong {
   }
 
   .set-row {
-    grid-template-columns: minmax(58px, 1fr) 64px 64px;
+    grid-template-columns: minmax(54px, 1fr) minmax(62px, 1fr) minmax(62px, 1fr);
     gap: 6px;
   }
 
   .set-row input {
     padding: 10px 8px;
+  }
+
+  table {
+    min-width: 460px;
+  }
+
+  .compact-table {
+    min-width: 430px;
   }
 
   .player-list,

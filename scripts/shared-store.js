@@ -61,7 +61,7 @@
       mode: "shared",
       id: row.id,
       shareCode: row.share_code,
-      hostShareCode: row.config?.hostShareCode || row.host_share_code || "",
+      hostShareCode: memberRole === "host" ? row.config?.hostShareCode || "" : "",
       name: row.name,
       memberRole,
       version: row.version || 1,

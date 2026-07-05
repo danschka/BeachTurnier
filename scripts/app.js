@@ -301,8 +301,8 @@
       active = BeachCupStore.deleteTournament(active.id);
       persistAndRender();
     });
-    $("#generateTournamentButton").addEventListener("click", generateTournament);
-    $("#reshuffleButton").addEventListener("click", generateTournament);
+    $("#generateTournamentButton").addEventListener("click", () => generateTournament());
+    $("#reshuffleButton").addEventListener("click", () => generateTournament());
     $("#startTournamentButton").addEventListener("click", startTournament);
     ["teamCountInput", "playersPerTeamInput", "groupCountInput", "targetScoreInput"].forEach((id) => {
       $(`#${id}`).addEventListener("change", updateFormatFromInputs);
@@ -421,7 +421,7 @@
     await activateSharedFromLocalCopy(active);
   }
 
-  async function activateSharedFromLocalCopy(localCopy) {
+  async function activateSharedFromLocalCopy(localCopy, options = {}) {
     if (!SharedTournamentStore.isConfigured()) {
       alert("Supabase ist noch nicht konfiguriert. Bitte scripts/supabase-config.js anlegen.");
       return;
@@ -434,7 +434,9 @@
       subscribeToActiveSharedLobby();
       replaceLobbyUrl(activeShared.shareCode);
       render();
-      await copyShareLink();
+      if (options.copyLink !== false) {
+        await copyShareLink();
+      }
     } catch (error) {
       alert(`Shared Lobby konnte nicht erstellt werden: ${error.message}`);
     }
@@ -459,7 +461,7 @@
 
   function getHostShareLink() {
     if (!activeShared) return;
-    return SharedTournamentStore.getHostShareLink(activeShared) || SharedTournamentStore.getShareLink(activeShared);
+    return SharedTournamentStore.getHostShareLink(activeShared);
   }
 
   function getPlayerShareLink() {
@@ -561,7 +563,7 @@
     persistAndRender();
   }
 
-  function generateTournament() {
+  async function generateTournament() {
     const format = currentFormat();
     if (active.players.length !== format.totalPlayers) {
       alert(`Für die Auslosung werden genau ${format.totalPlayers} Teilnehmer benötigt.`);
@@ -574,6 +576,9 @@
     if (active.tournament && !confirmDestructive("Spielplan zurücksetzen")) return;
     active.tournament = BeachTournament.createTournament(active.players, format);
     persistAndRender();
+    if (mode === "local" && SharedTournamentStore.isConfigured()) {
+      await activateSharedFromLocalCopy(active, { copyLink: false });
+    }
     showTab("teams");
   }
 
@@ -680,11 +685,15 @@
     $("#publishLocalButton").disabled = !SharedTournamentStore.isConfigured();
     const hostLink = getHostShareLink() || "";
     const playerLink = getPlayerShareLink() || "";
+    const missingHostLink = mode === "shared" && activeShared && isSharedHost() && !hostLink;
     $("#shareLinkGrid").hidden = mode !== "shared" || !activeShared;
     $("#hostShareLink").value = hostLink;
+    $("#hostShareLink").placeholder = missingHostLink ? "Supabase-Migration 005 ausführen" : "";
     $("#playerShareLink").value = playerLink;
     $("#sharedLobbyTitle").textContent = mode === "shared" ? `Shared Lobby: ${active.name || "unbekannt"}` : "Lokales Turnier online veröffentlichen";
-    $("#sharedLobbyText").textContent = sharedError || (mode === "shared"
+    $("#sharedLobbyText").textContent = sharedError || (missingHostLink
+      ? "Der Spieler-Link ist bereit. Für den Host-Link bitte zuerst die Supabase-Migration 005_host_share_links.sql ausführen."
+      : mode === "shared"
       ? (isSharedHost()
         ? "Teile den Host-Link mit Ausrichtern und den Spieler-Link mit Teilnehmern."
         : "Du bist Spieler: Du kannst deinen Namen eintragen, vor der Auslosung wieder entfernen und nach der Auslosung den Namen deines Teams bearbeiten.")

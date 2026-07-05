@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 220" role="img" aria-labelledby="title desc">
+  <title id="title">BeachCup Logo</title>
+  <desc id="desc">Ein Beachvolleyball neben einem goldenen Pokal auf einer Sandwelle.</desc>
+  <defs>
+    <linearGradient id="sand" x1="32" x2="326" y1="181" y2="181" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f7d882"/>
+      <stop offset=".56" stop-color="#f0a32f"/>
+      <stop offset="1" stop-color="#d8871c"/>
+    </linearGradient>
+    <linearGradient id="cup" x1="211" x2="290" y1="55" y2="167" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe88a"/>
+      <stop offset=".48" stop-color="#f0a32f"/>
+      <stop offset="1" stop-color="#c97618"/>
+    </linearGradient>
+    <linearGradient id="ballShade" x1="52" x2="171" y1="61" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e4f3f0"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M35 177c44-30 85-30 124 0 39 29 85 29 136 0 15-9 27-13 38-14v35H35z" fill="url(#sand)"/>
+  <path d="M47 177c39 17 76 17 112 0 39-18 78-18 118 0" fill="none" stroke="#0b7f8e" stroke-width="8" stroke-linecap="round"/>
+
+  <circle cx="112" cy="110" r="61" fill="url(#ballShade)" stroke="#0b7f8e" stroke-width="9"/>
+  <path d="M62 76c24 10 44 30 55 57 6 14 8 28 7 41" fill="none" stroke="#0b7f8e" stroke-width="9" stroke-linecap="round"/>
+  <path d="M102 51c-7 25-4 51 10 78 12 22 29 39 52 51" fill="none" stroke="#0b7f8e" stroke-width="9" stroke-linecap="round"/>
+  <path d="M55 122c30-15 61-19 93-10 10 3 19 7 28 12" fill="none" stroke="#f0a32f" stroke-width="9" stroke-linecap="round"/>
+  <path d="M78 162c16-19 38-32 67-39" fill="none" stroke="#f0a32f" stroke-width="9" stroke-linecap="round"/>
+
+  <path d="M221 69h64v36c0 29-14 51-32 56-18-5-32-27-32-56z" fill="url(#cup)" stroke="#8d5717" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M221 85h-28c0 28 16 47 39 48" fill="none" stroke="#8d5717" stroke-width="9" stroke-linecap="round"/>
+  <path d="M285 85h28c0 28-16 47-39 48" fill="none" stroke="#8d5717" stroke-width="9" stroke-linecap="round"/>
+  <path d="M253 161v20" stroke="#8d5717" stroke-width="10" stroke-linecap="round"/>
+  <path d="M221 186h64" stroke="#8d5717" stroke-width="13" stroke-linecap="round"/>
+  <path d="M235 86h36" stroke="#fff2a6" stroke-width="7" stroke-linecap="round"/>
+</svg>

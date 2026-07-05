@@ -3,7 +3,8 @@
   const HOST_KEY = "wws-beachcup-host-id-v1";
   const LEGACY_KEY = "beach-cup-state-v1";
   const DEFAULT_TOURNAMENT_NAME = "1. WWS-Herren BeachCup";
-  const DEFAULT_LOGO_SRC = "assets/wilde-wespen-logo.jpeg";
+  const DEFAULT_LOGO_SRC = "assets/beachcup-logo.svg";
+  const LEGACY_LOGO_SRC = "assets/wilde-wespen-logo.jpeg";
   const DEFAULT_FORMAT = { teamCount: 6, playersPerTeam: 2, groupCount: 2, targetScore: 15 };
 
   function readJson(key, fallback) {
@@ -37,6 +38,10 @@
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  function normalizeLogoSrc(logoSrc) {
+    return !logoSrc || logoSrc === LEGACY_LOGO_SRC ? DEFAULT_LOGO_SRC : logoSrc;
   }
 
   function normalizeStore(store) {
@@ -93,7 +98,7 @@
     legacyTournament.players = Array.isArray(legacy.players) ? legacy.players : [];
     legacyTournament.tournament = legacy.tournament || null;
     legacyTournament.registrationLink = legacy.registrationLink || "";
-    legacyTournament.logoSrc = legacy.logoSrc || DEFAULT_LOGO_SRC;
+    legacyTournament.logoSrc = normalizeLogoSrc(legacy.logoSrc);
     legacyTournament.createdAt = legacy.tournament?.createdAt || legacyTournament.createdAt;
     hostData.tournaments[legacyTournament.id] = legacyTournament;
     hostData.activeTournamentId = legacyTournament.id;
@@ -119,7 +124,13 @@
       }
       saveHostData(hostData);
     }
-    return hostData.tournaments[hostData.activeTournamentId];
+    const activeTournament = hostData.tournaments[hostData.activeTournamentId];
+    const normalizedLogoSrc = normalizeLogoSrc(activeTournament.logoSrc);
+    if (activeTournament.logoSrc !== normalizedLogoSrc) {
+      activeTournament.logoSrc = normalizedLogoSrc;
+      saveHostData(hostData);
+    }
+    return activeTournament;
   }
 
   function getActiveTournament() {
@@ -143,7 +154,7 @@
       players: Array.isArray(tournament.players) ? tournament.players : [],
       playerOwners: tournament.playerOwners || {},
       format: { ...DEFAULT_FORMAT, ...(tournament.format || {}) },
-      logoSrc: tournament.logoSrc || DEFAULT_LOGO_SRC,
+      logoSrc: normalizeLogoSrc(tournament.logoSrc),
       updatedAt: now,
       createdAt: tournament.createdAt || now,
     };

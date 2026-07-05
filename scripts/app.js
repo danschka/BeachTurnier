@@ -1,6 +1,7 @@
 (function () {
   const DEFAULT_TOURNAMENT_NAME = "1. WWS-Herren BeachCup";
-  const DEFAULT_LOGO_SRC = BeachCupStore.DEFAULT_LOGO_SRC || "assets/wilde-wespen-logo.jpeg";
+  const DEFAULT_LOGO_SRC = BeachCupStore.DEFAULT_LOGO_SRC || "assets/beachcup-logo.svg";
+  const LEGACY_LOGO_SRC = "assets/wilde-wespen-logo.jpeg";
   const DEFAULT_FORMAT = BeachTournament.DEFAULT_FORMAT || BeachCupStore.DEFAULT_FORMAT || { teamCount: 6, playersPerTeam: 2, groupCount: 2, targetScore: 15 };
   const PLAYER_NAME_KEY = "wws-beachcup-player-name-v1";
   const SHARED_SAVE_DELAY = 750;
@@ -43,6 +44,10 @@
     return mode === "shared" && activeShared?.memberRole !== "host";
   }
 
+  function normalizeLogoSrc(logoSrc) {
+    return !logoSrc || logoSrc === LEGACY_LOGO_SRC ? DEFAULT_LOGO_SRC : logoSrc;
+  }
+
   function refreshActive() {
     if (mode === "shared" && activeShared) {
       active = SharedTournamentStore.sharedToActiveTournament(activeShared);
@@ -60,6 +65,7 @@
     } else if (mode === "local") {
       active = BeachCupStore.getActiveTournament();
     }
+    active.logoSrc = normalizeLogoSrc(active.logoSrc);
     settings = BeachCupStore.getSettings();
   }
 

@@ -73,7 +73,10 @@ begin
     p_share_code,
     coalesce(nullif(trim(p_name), ''), 'Shared Tournament'),
     jsonb_set(coalesce(p_state, '{}'::jsonb), '{playerOwners}', coalesce(p_state->'playerOwners', '{}'::jsonb), true),
-    (coalesce(p_config, '{}'::jsonb) - 'hostShareCode') || jsonb_build_object('hostShareCode', gen_random_uuid()::text)
+    (coalesce(p_config, '{}'::jsonb) - 'hostShareCode') || jsonb_build_object(
+      'hostShareCode',
+      coalesce(nullif(p_config->>'hostShareCode', ''), gen_random_uuid()::text)
+    )
   )
   returning * into v_tournament;
 

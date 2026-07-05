@@ -417,6 +417,10 @@ body.dark .panel {
   margin-top: 12px;
 }
 
+.share-link-grid[hidden] {
+  display: none;
+}
+
 .share-link-grid input {
   font-size: 0.9rem;
 }

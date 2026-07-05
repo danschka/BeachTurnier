@@ -110,15 +110,20 @@
     await ensureAnonymousSession();
     const supabase = getClient();
     const shareCode = createShareCode();
+    const hostShareCode = createShareCode();
     const state = localToSharedState(localTournament);
     const { data, error } = await supabase.rpc("create_shared_lobby", {
       p_share_code: shareCode,
       p_name: localTournament.name || "Shared Tournament",
       p_state: state,
-      p_config: {},
+      p_config: { hostShareCode },
     });
     if (error) throw explainRpcError(error, "create_shared_lobby");
-    return normalizeSharedRow(data[0]);
+    return {
+      ...normalizeSharedRow(data[0]),
+      hostShareCode,
+      memberRole: "host",
+    };
   }
 
   async function joinSharedTournamentByCode(shareCode) {

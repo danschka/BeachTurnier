@@ -473,7 +473,10 @@
 
   async function copyShareLink() {
     const link = getHostShareLink();
-    if (!link) return;
+    if (!link) {
+      alert("Host-Link noch nicht verfügbar. Bitte die Supabase-Migration 005_host_share_links.sql erneut ausführen und danach eine neue Shared Lobby erstellen.");
+      return;
+    }
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(link);
     } else {

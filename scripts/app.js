@@ -830,7 +830,7 @@
       </label>
     </div>`;
     renderPlayerTask(team);
-    renderPlayerProgress(team);
+    renderPlayerProgress(team, rememberedName);
     if (!canEdit) return;
     $("#playerTeamNameInput").addEventListener("input", (event) => {
       if (isSharedPlayer()) return;
@@ -907,10 +907,10 @@
     return nextTask.kind === "play" ? "Naechstes Spiel" : "Naechstes Schiedsgericht";
   }
 
-  function renderPlayerProgress(team) {
+  function renderPlayerProgress(team, playerName) {
     const tournament = active.tournament;
     if (isTournamentComplete(tournament)) {
-      renderPlayerFinalRanking(team);
+      renderPlayerFinalRanking(team, playerName);
       return;
     }
     renderPlayerStandings(team);
@@ -956,19 +956,28 @@
           <span>${matchTeamName(match.teamA, tournament)} vs ${matchTeamName(match.teamB, tournament)} · ${escapeHtml(label)}</span>
         </div>`;
       }).join("")}
+      <h4>Live-Platzierungen</h4>
+      ${placementListHtml(finalPlacements(tournament), team.id)}
     </div>`;
   }
 
-  function renderPlayerFinalRanking(team) {
+  function renderPlayerFinalRanking(team, playerName) {
     const tournament = active.tournament;
-    const teamMap = teamLookup(tournament);
-    const ranked = BeachTournament.ranking(tournament);
-    const reversed = ranked.map((teamId, index) => ({ teamId, place: index + 1 })).reverse();
-    $("#playerStandingsView").innerHTML = reversed.length
-      ? `<ol class="ranking-list reversed-ranking">${reversed.map((item) => `<li${item.teamId === team.id ? " class=\"is-own-team\"" : ""}>
-          ${item.place}. Platz: ${teamLabel(teamMap.get(item.teamId))}
-        </li>`).join("")}</ol>`
+    const placements = finalPlacements(tournament);
+    const ownPlacement = placements.find((item) => item.team?.id === team.id);
+    const teammateText = team.players.filter((name) => name !== playerName).join(" & ") || "kein Teamkollege";
+    $("#playerStandingsView").innerHTML = ownPlacement
+      ? `<section class="player-result-page placement-${ownPlacement.place}">
+          <p class="result-kicker">Turnier abgeschlossen</p>
+          <h3>${ownPlacement.place}. Platz</h3>
+          <p class="result-player">${escapeHtml(playerName)}</p>
+          <p><strong>${escapeHtml(team.name)}</strong></p>
+          <p class="muted">Teamkollege: ${escapeHtml(teammateText)}</p>
+          <button class="primary-button wide" id="downloadCertificateButton" type="button">Urkunde als PDF herunterladen</button>
+        </section>
+        ${placementListHtml(placements, team.id)}`
       : emptyMessage("Endplatzierung noch nicht verfuegbar.");
+    $("#downloadCertificateButton")?.addEventListener("click", () => exportCertificatePdf(playerName));
   }
 
   function isTournamentComplete(tournament) {
@@ -1166,11 +1175,51 @@
 
   function renderRanking() {
     const tournament = active.tournament;
+    $("#rankingList").innerHTML = placementListItemsHtml(finalPlacements(tournament));
+  }
+
+  function finalPlacements(tournament) {
+    const finals = tournament?.finals || [];
     const teamMap = teamLookup(tournament);
-    const ranked = BeachTournament.ranking(tournament);
-    $("#rankingList").innerHTML = ranked.length
-      ? ranked.map((teamId) => `<li>${teamLabel(teamMap.get(teamId))}</li>`).join("")
-      : `<li>Finalspiele noch offen</li>`;
+    const bySlot = new Map(finals.map((match) => [match.slot, match]));
+    const placementSlots = [
+      { place: 1, slot: "final", resultKey: "winner", placeholder: "Gewinner Finale" },
+      { place: 2, slot: "final", resultKey: "loser", placeholder: "Verlierer Finale" },
+      { place: 3, slot: "place3", resultKey: "winner", placeholder: "Gewinner Spiel um Platz 3" },
+      { place: 4, slot: "place3", resultKey: "loser", placeholder: "Verlierer Spiel um Platz 3" },
+      { place: 5, slot: "place5", resultKey: "winner", placeholder: "Gewinner Spiel um Platz 5" },
+      { place: 6, slot: "place5", resultKey: "loser", placeholder: "Verlierer Spiel um Platz 5" },
+    ];
+    return placementSlots.map((item) => {
+      const match = bySlot.get(item.slot);
+      const result = match ? BeachTournament.matchResult(match) : null;
+      const teamId = result?.[item.resultKey] || "";
+      return {
+        ...item,
+        teamId,
+        team: teamMap.get(teamId) || null,
+      };
+    });
+  }
+
+  function placementListHtml(placements, ownTeamId = "") {
+    return `<ol class="ranking-list placement-list">${placementListItemsHtml(placements, ownTeamId)}</ol>`;
+  }
+
+  function placementListItemsHtml(placements, ownTeamId = "") {
+    return placements.map((item) => {
+      const text = item.team ? teamLabel(item.team) : escapeHtml(item.placeholder);
+      const classes = [
+        "placement-row",
+        `placement-${item.place}`,
+        item.team ? "" : "is-placeholder",
+        item.teamId === ownTeamId ? "is-own-team" : "",
+      ].filter(Boolean).join(" ");
+      return `<li class="${classes}">
+        <strong>${item.place}. Platz</strong>
+        <span>${text}</span>
+      </li>`;
+    }).join("");
   }
 
   function matchCard(match, tournament) {
@@ -1400,6 +1449,27 @@
     downloadBlob("wws-herren-beachcup-ergebnisse.pdf", blob);
   }
 
+  function exportCertificatePdf(playerName) {
+    const tournament = active.tournament;
+    if (!tournament || !playerName) return;
+    const team = (tournament.teams || []).find((item) => item.players.includes(playerName));
+    if (!team) return;
+    const placement = finalPlacements(tournament).find((item) => item.team?.id === team.id);
+    if (!placement?.team) {
+      alert("Die finale Platzierung ist noch nicht verfuegbar.");
+      return;
+    }
+    const pdf = buildCertificatePdf({
+      playerName,
+      team,
+      placement,
+      tournamentName: active.name || DEFAULT_TOURNAMENT_NAME,
+      date: new Date().toLocaleDateString("de-DE"),
+    });
+    const safeName = playerName.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "spieler";
+    downloadBlob(`urkunde-${safeName}.pdf`, new Blob([pdf], { type: "application/pdf" }));
+  }
+
   function reportLines(tournament) {
     const lines = [`${active.name || DEFAULT_TOURNAMENT_NAME} Ergebnisse`, `Stand: ${new Date().toLocaleString("de-DE")}`, ""];
     BeachTournament.groupNames(tournament).forEach((group) => {
@@ -1412,10 +1482,10 @@
     [...tournament.matches, ...(tournament.finals || [])].forEach((match) => {
       lines.push(`${match.label}: ${textTeamName(match.teamA, tournament)} vs ${textTeamName(match.teamB, tournament)} · Schiri: ${refereeForMatch(match, tournament)} · ${match.sets.map(setText).filter(Boolean).join(", ") || "offen"}`);
     });
-    const ranked = BeachTournament.ranking(tournament);
-    if (ranked.length) {
+    const placements = finalPlacements(tournament);
+    if (placements.length) {
       lines.push("", "Endplatzierung");
-      ranked.forEach((teamId, index) => lines.push(`${index + 1}. ${textTeamName(teamId, tournament)}`));
+      placements.forEach((item) => lines.push(`${item.place}. ${item.team ? plainTeamLabel(item.team) : item.placeholder}`));
     }
     return lines;
   }
@@ -1434,6 +1504,98 @@
       "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
       "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
       "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    ];
+    let pdf = "%PDF-1.4\n";
+    const offsets = [0];
+    objects.forEach((object, index) => {
+      offsets.push(pdf.length);
+      pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    });
+    const xref = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    offsets.slice(1).forEach((offset) => {
+      pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+    });
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    return pdf;
+  }
+
+  function buildCertificatePdf(data) {
+    const theme = certificateTheme(data.placement.place);
+    const teammateText = data.team.players.filter((name) => name !== data.playerName).join(" & ") || "kein Teamkollege";
+    const title = data.placement.place === 1 ? "Siegerurkunde" : "Turnierurkunde";
+    const subtitle = data.placement.place <= 3 ? theme.subtitle : "Starke Leistung im BeachCup";
+    const content = [
+      "q",
+      `${theme.bg} rg 0 0 595 842 re f`,
+      `${theme.border} RG 14 w 34 34 527 774 re S`,
+      `${theme.accent} rg 58 706 479 58 re f`,
+      `${theme.border} RG 3 w 74 118 447 516 re S`,
+      `${theme.accent} RG 2 w 90 134 415 484 re S`,
+      "Q",
+      "BT",
+      "/F2 34 Tf",
+      `${theme.titleColor} rg`,
+      `90 724 Td (${pdfEscape(title)}) Tj`,
+      "/F1 14 Tf",
+      `0 -34 Td (${pdfEscape(data.tournamentName)}) Tj`,
+      "/F2 92 Tf",
+      `${theme.medalColor} rg`,
+      `145 -142 Td (${data.placement.place}) Tj`,
+      "/F2 30 Tf",
+      `${theme.titleColor} rg`,
+      `-96 -54 Td (${pdfEscape(`${data.placement.place}. Platz`)}) Tj`,
+      "/F2 28 Tf",
+      `0 -58 Td (${pdfEscape(data.playerName)}) Tj`,
+      "/F1 17 Tf",
+      `0 -34 Td (${pdfEscape(data.team.name)}) Tj`,
+      "/F1 13 Tf",
+      `0 -26 Td (${pdfEscape(`Teamkollege: ${teammateText}`)}) Tj`,
+      "/F2 16 Tf",
+      `0 -58 Td (${pdfEscape(subtitle)}) Tj`,
+      "/F1 12 Tf",
+      `0 -118 Td (${pdfEscape(`Turnierdatum: ${data.date}`)}) Tj`,
+      `0 -20 Td (${pdfEscape("1. WWS-Herren BeachCup")}) Tj`,
+      "ET",
+      ...certificateDecoration(data.placement.place),
+    ].join("\n");
+    return buildPdfFromContent(content);
+  }
+
+  function certificateTheme(place) {
+    if (place === 1) {
+      return { bg: "1 0.965 0.82", accent: "0.92 0.62 0.12", border: "0.74 0.46 0.08", titleColor: "0.28 0.18 0.04", medalColor: "0.9 0.55 0.06", subtitle: "Gold, Sand und Nervenstaerke" };
+    }
+    if (place === 2) {
+      return { bg: "0.94 0.95 0.96", accent: "0.68 0.72 0.76", border: "0.46 0.5 0.55", titleColor: "0.16 0.19 0.22", medalColor: "0.62 0.66 0.7", subtitle: "Silber mit grosser Klasse" };
+    }
+    if (place === 3) {
+      return { bg: "0.98 0.9 0.78", accent: "0.72 0.42 0.18", border: "0.95 0.68 0.12", titleColor: "0.26 0.16 0.08", medalColor: "0.66 0.34 0.12", subtitle: "Podium verdient erkaempft" };
+    }
+    return { bg: "0.95 0.98 0.98", accent: "0.18 0.58 0.64", border: "0.08 0.36 0.4", titleColor: "0.08 0.24 0.27", medalColor: "0.12 0.48 0.54", subtitle: "Mit Einsatz und Teamgeist" };
+  }
+
+  function certificateDecoration(place) {
+    if (place === 1) {
+      return ["q", "0.95 0.72 0.18 rg 462 620 36 36 re f", "0.74 0.46 0.08 RG 4 w 438 582 84 78 re S", "Q", "BT /F2 12 Tf 0.28 0.18 0.04 rg 458 604 Td (POKAL) Tj ET"];
+    }
+    if (place === 2) {
+      return ["q", "0.78 0.8 0.82 rg 462 620 36 36 re f", "0.46 0.5 0.55 RG 4 w 438 582 84 78 re S", "Q", "BT /F2 12 Tf 0.16 0.19 0.22 rg 448 604 Td (MEDAILLE) Tj ET"];
+    }
+    if (place === 3) {
+      return ["q", "0.76 0.43 0.18 rg 462 620 36 36 re f", "0.95 0.68 0.12 RG 5 w 438 582 84 78 re S", "Q", "BT /F2 12 Tf 0.26 0.16 0.08 rg 452 604 Td (PODIUM) Tj ET"];
+    }
+    return ["q", "0.18 0.58 0.64 rg 462 620 36 36 re f", "0.08 0.36 0.4 RG 3 w 438 582 84 78 re S", "Q"];
+  }
+
+  function buildPdfFromContent(stream) {
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
       `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
     ];
     let pdf = "%PDF-1.4\n";
@@ -1555,7 +1717,18 @@
   }
 
   function pdfEscape(value) {
-    return String(value).replace(/[^\x20-\x7E]/g, "?").replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+    return String(value)
+      .replaceAll("Ä", "Ae")
+      .replaceAll("Ö", "Oe")
+      .replaceAll("Ü", "Ue")
+      .replaceAll("ä", "ae")
+      .replaceAll("ö", "oe")
+      .replaceAll("ü", "ue")
+      .replaceAll("ß", "ss")
+      .replace(/[^\x20-\x7E]/g, "?")
+      .replaceAll("\\", "\\\\")
+      .replaceAll("(", "\\(")
+      .replaceAll(")", "\\)");
   }
 
   init().catch((error) => {

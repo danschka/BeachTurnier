@@ -1,7 +1,8 @@
 (function () {
   const DEFAULT_FORMAT = {
-    teamCount: 6,
+    playerCount: 12,
     playersPerTeam: 2,
+    courtCount: 2,
     groupCount: 2,
     targetScore: 15,
     finalsBestOf: 3,
@@ -18,18 +19,26 @@
   }
 
   function normalizeFormat(format = {}) {
-    const teamCount = clampInt(format.teamCount, DEFAULT_FORMAT.teamCount, 2, 32);
     const playersPerTeam = clampInt(format.playersPerTeam, DEFAULT_FORMAT.playersPerTeam, 1, 8);
+    const fallbackPlayerCount = format.teamCount
+      ? Number.parseInt(format.teamCount, 10) * playersPerTeam
+      : DEFAULT_FORMAT.playerCount;
+    const playerCount = clampInt(format.playerCount ?? format.totalPlayers, fallbackPlayerCount, 2, 256);
+    const teamCount = Math.max(1, Math.floor(playerCount / playersPerTeam));
+    const courtCount = clampInt(format.courtCount, DEFAULT_FORMAT.courtCount, 1, 16);
     const groupCount = clampInt(format.groupCount, DEFAULT_FORMAT.groupCount, 1, Math.min(8, teamCount));
     const targetScore = clampInt(format.targetScore, DEFAULT_FORMAT.targetScore, 5, 99);
     const finalsBestOf = clampInt(format.finalsBestOf, DEFAULT_FORMAT.finalsBestOf, 1, 5);
     return {
+      playerCount,
       teamCount,
       playersPerTeam,
+      courtCount,
       groupCount,
       targetScore,
       finalsBestOf: finalsBestOf % 2 === 0 ? finalsBestOf + 1 : finalsBestOf,
-      totalPlayers: teamCount * playersPerTeam,
+      totalPlayers: playerCount,
+      hasCompleteTeams: playerCount % playersPerTeam === 0 && teamCount >= 2,
     };
   }
 
@@ -86,6 +95,7 @@
             phase: "group",
             group,
             label: `Gruppe ${group} · Spiel ${game}`,
+            court: (matches.length % format.courtCount) + 1,
             bestOf: 1,
             target: format.targetScore,
             teamA: teams[left]?.id,
@@ -234,13 +244,13 @@
     if (groups.length === 2 && (tournament.groups[groups[0]] || []).length >= 3 && (tournament.groups[groups[1]] || []).length >= 3) {
       const tableA = standingsForGroup(groups[0], tournament);
       const tableB = standingsForGroup(groups[1], tournament);
-      return [
+      return assignCourts([
         fromExisting("semi1", makeFinal("semi1", "Halbfinale 1", tableA[0].teamId, tableB[1].teamId, 1, format)),
         fromExisting("semi2", makeFinal("semi2", "Halbfinale 2", tableB[0].teamId, tableA[1].teamId, 1, format)),
         fromExisting("place5", makeFinal("place5", "Spiel um Platz 5", tableA[2].teamId, tableB[2].teamId, 1, format)),
         fromExisting("place3", makeFinal("place3", "Spiel um Platz 3", null, null, 1, format)),
         fromExisting("final", makeFinal("final", "Finale", null, null, format.finalsBestOf, format)),
-      ].map((match, index, finals) => hydrateFinalTeams(match, finals));
+      ].map((match, index, finals) => hydrateFinalTeams(match, finals)), format);
     }
 
     const ranked = allGroupStandings(tournament);
@@ -251,7 +261,7 @@
     if (ranked.length >= 4) {
       matches.push(fromExisting("place3", makeFinal("place3", "Spiel um Platz 3", ranked[2].teamId, ranked[3].teamId, 1, format)));
     }
-    return matches;
+    return assignCourts(matches, format);
   }
 
   function makeFinal(slot, label, teamA, teamB, bestOf, format) {
@@ -267,6 +277,13 @@
       teamB,
       sets: Array.from({ length: bestOf }, () => ({ a: "", b: "" })),
     };
+  }
+
+  function assignCourts(matches, format) {
+    return matches.map((match, index) => ({
+      ...match,
+      court: match.court || (index % format.courtCount) + 1,
+    }));
   }
 
   function hydrateFinalTeams(match, finals) {

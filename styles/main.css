@@ -826,11 +826,24 @@ table {
   overflow: hidden;
 }
 
-.standing-card,
 .player-progress-stack {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
+}
+
+.standing-card {
+  overflow-x: visible;
+}
+
+.standing-card table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.standing-card th,
+.standing-card td {
+  overflow-wrap: anywhere;
 }
 
 .compact-table {
@@ -936,6 +949,10 @@ body.beam .live-strip strong {
     padding: 18px 14px 12px;
   }
 
+  .brand-block {
+    width: 100%;
+  }
+
   .header-actions,
   .button-row {
     width: 100%;
@@ -955,22 +972,32 @@ body.beam .live-strip strong {
   }
 
   .tabs {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scroll-snap-type: x proximity;
-    -webkit-overflow-scrolling: touch;
+    overflow: visible;
+    padding: 0 0 8px;
+    background: transparent;
+  }
+
+  body.dark .tabs {
+    background: transparent;
   }
 
   .tab {
-    flex: 0 0 auto;
-    min-width: 116px;
-    scroll-snap-align: start;
+    min-width: 0;
+    min-height: 42px;
+    padding: 0 8px;
+    font-size: 0.88rem;
   }
 
   .panel {
     padding: 14px;
+  }
+
+  .section-title {
+    gap: 10px;
+    margin-bottom: 14px;
   }
 
   .live-strip div {
@@ -1008,16 +1035,32 @@ body.beam .live-strip strong {
     justify-content: flex-start;
   }
 
+  .setup-side {
+    order: -1;
+  }
+
   .match-card {
     align-items: stretch;
+    gap: 12px;
   }
 
   .match-teams {
-    padding: 2px 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--surface-strong);
   }
 
   .referee-row {
     grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .format-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .action-card {
+    border-color: var(--primary);
   }
 }
 
@@ -1030,9 +1073,64 @@ body.beam .live-strip strong {
     width: 100%;
   }
 
+  .header-actions button,
+  .button-row button,
+  .export-grid button,
+  .file-button {
+    flex: 1 1 150px;
+  }
+
+  .tournament-manager strong,
+  .share-link-grid input,
+  input,
+  select,
+  textarea {
+    min-height: 48px;
+  }
+
   .match-meta,
   .match-teams {
     overflow-wrap: anywhere;
+  }
+
+  .match-card {
+    padding: 12px;
+  }
+
+  .score-inputs {
+    gap: 10px;
+  }
+
+  .set-row {
+    grid-template-columns: minmax(70px, 1fr) minmax(76px, 92px) minmax(76px, 92px);
+  }
+
+  .set-row span {
+    font-size: 0.82rem;
+  }
+
+  .set-row input {
+    min-height: 52px;
+  }
+
+  .standing-card table {
+    font-size: 0.88rem;
+  }
+
+  .standing-card th:nth-child(4),
+  .standing-card td:nth-child(4) {
+    display: none;
+  }
+
+  .player-list,
+  .ranking-list {
+    gap: 7px;
+  }
+
+  .player-list li,
+  .ranking-list li,
+  .referee-row {
+    padding: 10px;
   }
 }
 
@@ -1063,13 +1161,18 @@ body.beam .live-strip strong {
   }
 
   .brand-title {
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
   }
 
+  .tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .tab {
-    min-width: 104px;
-    padding-inline: 10px;
+    min-height: 40px;
+    padding-inline: 6px;
+    font-size: 0.82rem;
   }
 
   .eyebrow {
@@ -1077,7 +1180,7 @@ body.beam .live-strip strong {
   }
 
   h1 {
-    font-size: 1.65rem;
+    font-size: 1.45rem;
     line-height: 1.04;
   }
 
@@ -1086,8 +1189,16 @@ body.beam .live-strip strong {
   }
 
   .tournament-logo {
-    width: 70px;
-    height: 44px;
+    width: 62px;
+    height: 40px;
+  }
+
+  .live-strip {
+    margin-bottom: 10px;
+  }
+
+  .live-strip div {
+    padding: 10px 12px;
   }
 
   .panel,
@@ -1118,7 +1229,7 @@ body.beam .live-strip strong {
   }
 
   .live-strip strong {
-    font-size: 0.96rem;
+    font-size: 0.9rem;
   }
 
   .live-strip span,
@@ -1129,7 +1240,7 @@ body.beam .live-strip strong {
   }
 
   .set-row {
-    grid-template-columns: minmax(54px, 1fr) minmax(62px, 1fr) minmax(62px, 1fr);
+    grid-template-columns: minmax(48px, 0.8fr) minmax(60px, 1fr) minmax(60px, 1fr);
     gap: 6px;
   }
 
@@ -1138,7 +1249,12 @@ body.beam .live-strip strong {
   }
 
   table {
-    min-width: 460px;
+    min-width: 0;
+    font-size: 0.84rem;
+  }
+
+  .standing-card table {
+    min-width: 0;
   }
 
   .compact-table {
@@ -1173,18 +1289,31 @@ body.beam .live-strip strong {
     width: 100%;
   }
 
+  .readonly-list li {
+    align-items: flex-start;
+  }
+
   .team-chip {
     align-items: stretch;
     flex-direction: column;
+    gap: 8px;
   }
 
   .team-chip span {
     text-align: left;
   }
 
+  .match-referee {
+    margin-top: 6px;
+  }
+
+  .match-teams {
+    font-size: 0.95rem;
+  }
+
   th,
   td {
-    padding: 8px 6px;
+    padding: 7px 4px;
   }
 }
 

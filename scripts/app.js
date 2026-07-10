@@ -2,7 +2,7 @@
   const DEFAULT_TOURNAMENT_NAME = "1. WWS-Herren BeachCup";
   const DEFAULT_LOGO_SRC = BeachCupStore.DEFAULT_LOGO_SRC || "assets/beachcup-logo.svg";
   const LEGACY_LOGO_SRC = "assets/wilde-wespen-logo.jpeg";
-  const DEFAULT_FORMAT = BeachTournament.DEFAULT_FORMAT || BeachCupStore.DEFAULT_FORMAT || { teamCount: 6, playersPerTeam: 2, groupCount: 2, targetScore: 15 };
+  const DEFAULT_FORMAT = BeachTournament.DEFAULT_FORMAT || BeachCupStore.DEFAULT_FORMAT || { playerCount: 12, playersPerTeam: 2, courtCount: 2, groupCount: 2, targetScore: 15 };
   const PLAYER_NAME_KEY = "wws-beachcup-player-name-v1";
   const SHARED_SAVE_DELAY = 750;
   const SAMPLE_PLAYERS = [
@@ -304,7 +304,7 @@
     $("#generateTournamentButton").addEventListener("click", () => generateTournament());
     $("#reshuffleButton").addEventListener("click", () => generateTournament());
     $("#startTournamentButton").addEventListener("click", startTournament);
-    ["teamCountInput", "playersPerTeamInput", "groupCountInput", "targetScoreInput"].forEach((id) => {
+    ["courtCountInput", "playerCountInput", "playersPerTeamInput", "groupCountInput", "targetScoreInput"].forEach((id) => {
       $(`#${id}`).addEventListener("change", updateFormatFromInputs);
     });
     $("#printButton").addEventListener("click", () => window.print());
@@ -568,6 +568,10 @@
 
   async function generateTournament() {
     const format = currentFormat();
+    if (!format.hasCompleteTeams) {
+      alert("Die Spielerzahl muss durch Spieler pro Team teilbar sein und mindestens zwei Teams ergeben.");
+      return;
+    }
     if (active.players.length !== format.totalPlayers) {
       alert(`Für die Auslosung werden genau ${format.totalPlayers} Teilnehmer benötigt.`);
       return;
@@ -616,7 +620,7 @@
     const logoSrc = active.logoSrc || DEFAULT_LOGO_SRC;
     const format = currentFormat();
     document.title = title;
-    $("#formatEyebrow").textContent = `Beachvolleyball · ${format.totalPlayers} Spieler · ${format.teamCount} Teams`;
+    $("#formatEyebrow").textContent = `Volleyball - ${format.totalPlayers} Spieler - ${format.teamCount} Teams - ${format.courtCount} Spielfelder`;
     $("#tournamentTitle").textContent = title;
     $("#tournamentLogo").src = logoSrc;
     $("#tournamentLogo").alt = `${title} Logo`;
@@ -637,7 +641,8 @@
 
   function updateFormatFromInputs() {
     const next = BeachTournament.normalizeFormat({
-      teamCount: $("#teamCountInput").value,
+      courtCount: $("#courtCountInput").value,
+      playerCount: $("#playerCountInput").value,
       playersPerTeam: $("#playersPerTeamInput").value,
       groupCount: $("#groupCountInput").value,
       targetScore: $("#targetScoreInput").value,
@@ -646,7 +651,9 @@
     active.format = next;
     if (
       active.tournament &&
-      (previous.teamCount !== next.teamCount ||
+      (previous.playerCount !== next.playerCount ||
+        previous.teamCount !== next.teamCount ||
+        previous.courtCount !== next.courtCount ||
         previous.playersPerTeam !== next.playersPerTeam ||
         previous.groupCount !== next.groupCount ||
         previous.targetScore !== next.targetScore)
@@ -658,12 +665,15 @@
 
   function renderFormatControls() {
     const format = currentFormat();
-    $("#teamCountInput").value = format.teamCount;
+    $("#courtCountInput").value = format.courtCount;
+    $("#playerCountInput").value = format.totalPlayers;
     $("#playersPerTeamInput").value = format.playersPerTeam;
     $("#groupCountInput").value = format.groupCount;
     $("#targetScoreInput").value = format.targetScore;
-    $("#totalPlayersLabel").textContent = `${format.totalPlayers} Spieler`;
-    document.querySelector(".action-card p").textContent = `Bereit bei genau ${format.totalPlayers} Teilnehmern.`;
+    $("#totalPlayersLabel").textContent = `${format.totalPlayers} Spieler, ${format.teamCount} Teams`;
+    document.querySelector(".action-card p").textContent = format.hasCompleteTeams
+      ? `Bereit bei genau ${format.totalPlayers} Teilnehmern auf ${format.courtCount} Spielfeldern.`
+      : "Die Spielerzahl muss durch Spieler pro Team teilbar sein und mindestens zwei Teams ergeben.";
   }
 
   function renderTournamentManager() {
@@ -717,7 +727,8 @@
       "#startTournamentButton",
       "#renameTournamentButton",
       "#tournamentNameInput",
-      "#teamCountInput",
+      "#courtCountInput",
+      "#playerCountInput",
       "#playersPerTeamInput",
       "#groupCountInput",
       "#targetScoreInput",
@@ -732,6 +743,7 @@
       const element = $(selector);
       if (element) element.disabled = !host;
     });
+    $("#generateTournamentButton").disabled = !host || !currentFormat().hasCompleteTeams;
     const playerInput = $("#playerName");
     const playerSubmit = $("#playerForm button[type='submit']");
     const canEditPlayers = host || !active.tournament;
@@ -877,7 +889,7 @@
       ${taskInfo.currentMatch && task.match.id !== taskInfo.currentMatch.id ? `<p class="muted">Aktuell frei · laufend: ${escapeHtml(taskInfo.currentMatch.label)}</p>` : ""}
       <p>${escapeHtml(task.match.label)}</p>
       <p>${matchTeamName(task.match.teamA, tournament)}<br>vs<br>${matchTeamName(task.match.teamB, tournament)}</p>
-      <p class="muted">Schiri: ${refereeLabel(task.match, tournament)}</p>
+      <p class="muted">${courtLabel(task.match)} - Schiri: ${refereeLabel(task.match, tournament)}</p>
     </div>`;
   }
 
@@ -952,7 +964,7 @@
         const own = match.teamA === team.id || match.teamB === team.id;
         const label = result ? setSummary(match) : "offen";
         return `<div class="referee-row${own ? " is-own-team" : ""}">
-          <strong>${escapeHtml(match.label)}</strong>
+          <strong>${escapeHtml(match.label)} - ${courtLabel(match)}</strong>
           <span>${matchTeamName(match.teamA, tournament)} vs ${matchTeamName(match.teamB, tournament)} · ${escapeHtml(label)}</span>
         </div>`;
       }).join("")}
@@ -1222,6 +1234,10 @@
     }).join("");
   }
 
+  function courtLabel(match) {
+    return `Feld ${match?.court || 1}`;
+  }
+
   function matchCard(match, tournament) {
     const result = BeachTournament.matchResult(match);
     const current = !result && match.teamA && match.teamB ? " is-current" : "";
@@ -1229,7 +1245,7 @@
     const scoreDisabled = isSharedHost() ? "" : " disabled";
     return `<article class="match-card${current}">
       <div class="match-meta">${escapeHtml(match.label)} · bis ${match.target}${match.bestOf > 1 ? " · Best-of-3" : ""}
-        <span class="match-referee">Schiri: ${refereeLabel(match, tournament)}</span>
+        <span class="match-referee">${courtLabel(match)} - Schiri: ${refereeLabel(match, tournament)}</span>
       </div>
       <div class="match-teams">${matchTeamName(match.teamA, tournament)}<br>vs<br>${matchTeamName(match.teamB, tournament)}</div>
       <div class="score-inputs">
@@ -1401,7 +1417,7 @@
   }
 
   function liveLabel(match, tournament) {
-    return `${match.label}: ${matchTeamName(match.teamA, tournament)} vs ${matchTeamName(match.teamB, tournament)}`;
+    return `${match.label} (${courtLabel(match)}): ${matchTeamName(match.teamA, tournament)} vs ${matchTeamName(match.teamB, tournament)}`;
   }
 
   function teamLookup(tournament) {
@@ -1422,22 +1438,8 @@
   function exportCsv() {
     const tournament = active.tournament;
     if (!tournament) return;
-    const rows = [["Phase", "Spiel", "Team A", "Team B", "Schiedsrichter", "Satz 1", "Satz 2", "Satz 3", "Sieger"]];
-    [...tournament.matches, ...(tournament.finals || [])].forEach((match) => {
-      const result = BeachTournament.matchResult(match);
-      rows.push([
-        match.phase,
-        match.label,
-        textTeamName(match.teamA, tournament),
-        textTeamName(match.teamB, tournament),
-        refereeForMatch(match, tournament),
-        setText(match.sets[0]),
-        setText(match.sets[1]),
-        setText(match.sets[2]),
-        result ? textTeamName(result.winner, tournament) : "",
-      ]);
-    });
-    downloadText("wws-herren-beachcup-ergebnisse.csv", rows.map(csvRow).join("\n"), "text/csv");
+    const rows = csvReportRows(tournament);
+    downloadText(reportFilename("csv"), `\uFEFFsep=;\r\n${rows.map(csvRow).join("\r\n")}`, "text/csv;charset=utf-8");
   }
 
   function exportPdf() {
@@ -1446,7 +1448,38 @@
     const lines = reportLines(tournament);
     const pdf = buildSimplePdf(lines);
     const blob = new Blob([pdf], { type: "application/pdf" });
-    downloadBlob("wws-herren-beachcup-ergebnisse.pdf", blob);
+    downloadBlob(reportFilename("pdf"), blob);
+  }
+
+  function csvReportRows(tournament) {
+    const rows = [
+      ["Konfiguration"],
+      ["Turnier", active.name || DEFAULT_TOURNAMENT_NAME],
+      ["Exportiert am", new Date().toLocaleString("de-DE")],
+      ["Modus", mode === "shared" ? "Shared Lobby" : "Lokales Turnier"],
+    ];
+    tournamentConfigRows(tournament).forEach((row) => rows.push(row));
+
+    rows.push([], ["Teams"], ["Gruppe", "Team", "Spieler"]);
+    teamRows(tournament).forEach((row) => rows.push([row.group, row.name, row.players]));
+
+    rows.push([], ["Ergebnisse"], ["Phase", "Spiel", "Spielfeld", "Team A", "Team B", "Schiedsrichter", "Satz 1", "Satz 2", "Satz 3", "Sieger"]);
+    matchRows(tournament).forEach((row) => rows.push([
+      row.phase,
+      row.label,
+      row.court,
+      row.teamA,
+      row.teamB,
+      row.referee,
+      row.sets[0] || "",
+      row.sets[1] || "",
+      row.sets[2] || "",
+      row.winner,
+    ]));
+
+    rows.push([], ["Finale Platzierungen"], ["Platz", "Team", "Spieler"]);
+    finalPlacementRows(tournament).forEach((row) => rows.push([row.place, row.team, row.players]));
+    return rows;
   }
 
   function exportCertificatePdf(playerName) {
@@ -1470,7 +1503,8 @@
     downloadBlob(`urkunde-${safeName}.pdf`, new Blob([pdf], { type: "application/pdf" }));
   }
 
-  function reportLines(tournament) {
+  function legacyReportLines(tournament) {
+    return [];
     const lines = [`${active.name || DEFAULT_TOURNAMENT_NAME} Ergebnisse`, `Stand: ${new Date().toLocaleString("de-DE")}`, ""];
     BeachTournament.groupNames(tournament).forEach((group) => {
       lines.push(`Gruppe ${group}`);
@@ -1480,7 +1514,7 @@
       lines.push("");
     });
     [...tournament.matches, ...(tournament.finals || [])].forEach((match) => {
-      lines.push(`${match.label}: ${textTeamName(match.teamA, tournament)} vs ${textTeamName(match.teamB, tournament)} · Schiri: ${refereeForMatch(match, tournament)} · ${match.sets.map(setText).filter(Boolean).join(", ") || "offen"}`);
+      lines.push(`${match.label} (${courtLabel(match)}): ${textTeamName(match.teamA, tournament)} vs ${textTeamName(match.teamB, tournament)} - Schiri: ${refereeForMatch(match, tournament)} - ${match.sets.map(setText).filter(Boolean).join(", ") || "offen"}`);
     });
     const placements = finalPlacements(tournament);
     if (placements.length) {
@@ -1490,35 +1524,132 @@
     return lines;
   }
 
-  function buildSimplePdf(lines) {
-    const pageLines = wrapLines(lines, 92);
-    const content = ["BT", "/F1 11 Tf", "50 790 Td"];
-    pageLines.forEach((line, index) => {
-      if (index > 0) content.push("0 -15 Td");
-      content.push(`(${pdfEscape(line)}) Tj`);
+  function reportLines(tournament) {
+    const lines = [`${active.name || DEFAULT_TOURNAMENT_NAME}`, `Exportiert am ${new Date().toLocaleString("de-DE")}`, ""];
+    lines.push("Konfiguration");
+    tournamentConfigRows(tournament).forEach((row) => lines.push(`${row[0]}: ${row[1]}`));
+
+    lines.push("", "Teams");
+    teamRows(tournament).forEach((row) => lines.push(`Gruppe ${row.group}: ${row.name} - ${row.players}`));
+
+    lines.push("", "Ergebnisse");
+    matchRows(tournament).forEach((row) => {
+      lines.push(`${row.phase} - ${row.label} (${row.court})`);
+      lines.push(`${row.teamA || "offen"} vs ${row.teamB || "offen"}`);
+      lines.push(`Schiedsrichter: ${row.referee || "offen"} - Ergebnis: ${row.resultText || "offen"} - Sieger: ${row.winner || "offen"}`);
     });
-    content.push("ET");
-    const stream = content.join("\n");
+
+    lines.push("", "Finale Platzierungen");
+    finalPlacementRows(tournament).forEach((row) => lines.push(`${row.place}. ${row.team} - ${row.players}`));
+    return lines;
+  }
+
+  function tournamentConfigRows(tournament) {
+    const format = BeachTournament.normalizeFormat(tournament.format || active.format || DEFAULT_FORMAT);
+    return [
+      ["Spieler", format.totalPlayers],
+      ["Teams", format.teamCount],
+      ["Spieler pro Team", format.playersPerTeam],
+      ["Gruppen", format.groupCount],
+      ["Spielfelder", format.courtCount],
+      ["Satz bis", format.targetScore],
+      ["Finale", `Best-of-${format.finalsBestOf}`],
+      ["Turnier gestartet", tournament.startedAt ? new Date(tournament.startedAt).toLocaleString("de-DE") : "nein"],
+    ];
+  }
+
+  function teamRows(tournament) {
+    return BeachTournament.groupNames(tournament).flatMap((group) => {
+      return (tournament.groups[group] || []).map((team) => ({
+        group,
+        name: team.name,
+        players: team.players.join(" & "),
+      }));
+    });
+  }
+
+  function matchRows(tournament) {
+    return [...(tournament.matches || []), ...(tournament.finals || [])].map((match) => {
+      const result = BeachTournament.matchResult(match);
+      const sets = (match.sets || []).map(setText).filter(Boolean);
+      return {
+        phase: match.phase === "group" ? "Gruppenphase" : "KO-Phase",
+        label: match.label,
+        court: courtLabel(match),
+        teamA: textTeamName(match.teamA, tournament),
+        teamB: textTeamName(match.teamB, tournament),
+        referee: refereeForMatch(match, tournament),
+        sets,
+        resultText: sets.join(", "),
+        winner: result ? textTeamName(result.winner, tournament) : "",
+      };
+    });
+  }
+
+  function finalPlacementRows(tournament) {
+    return finalPlacements(tournament).map((item) => ({
+      place: item.place,
+      team: item.team ? item.team.name : item.placeholder,
+      players: item.team ? item.team.players.join(" & ") : "",
+    }));
+  }
+
+  function buildSimplePdf(lines) {
+    const pages = paginateLines(lines, 92, 48);
+    const fontObjectNumber = 3 + pages.length * 2;
+    const boldFontObjectNumber = fontObjectNumber + 1;
+    const pageObjects = [];
+    const contentObjects = [];
+    pages.forEach((pageLines, pageIndex) => {
+      const content = ["BT", pageIndex === 0 ? "/F2 14 Tf" : "/F1 11 Tf", "50 790 Td"];
+      pageLines.forEach((line, index) => {
+        if (index > 0) content.push("0 -15 Td");
+        content.push(`${pdfFontForLine(line)} (${pdfEscape(line)}) Tj`);
+      });
+      content.push("ET");
+      const stream = content.join("\n");
+      const contentObjectNumber = 3 + pages.length + pageIndex;
+      pageObjects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObjectNumber} 0 R /F2 ${boldFontObjectNumber} 0 R >> >> /Contents ${contentObjectNumber} 0 R >>`);
+      contentObjects.push(`<< /Length ${pdfByteLength(stream)} >>\nstream\n${stream}\nendstream`);
+    });
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
-      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+      `<< /Type /Pages /Kids [${pageObjects.map((_, index) => `${3 + index} 0 R`).join(" ")}] /Count ${pageObjects.length} >>`,
+      ...pageObjects,
+      ...contentObjects,
       "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
     ];
     let pdf = "%PDF-1.4\n";
     const offsets = [0];
     objects.forEach((object, index) => {
-      offsets.push(pdf.length);
+      offsets.push(pdfByteLength(pdf));
       pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
     });
-    const xref = pdf.length;
+    const xref = pdfByteLength(pdf);
     pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
     offsets.slice(1).forEach((offset) => {
       pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
     });
     pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
     return pdf;
+  }
+
+  function paginateLines(lines, lineLimit, linesPerPage) {
+    const wrapped = wrapLines(lines, lineLimit);
+    const pages = [];
+    for (let index = 0; index < wrapped.length; index += linesPerPage) {
+      pages.push(wrapped.slice(index, index + linesPerPage));
+    }
+    return pages.length ? pages : [[""]];
+  }
+
+  function pdfFontForLine(line) {
+    return ["Konfiguration", "Teams", "Ergebnisse", "Finale Platzierungen"].includes(line) ? "/F2 12 Tf" : "/F1 11 Tf";
+  }
+
+  function pdfByteLength(value) {
+    return new Blob([value]).size;
   }
 
   function buildCertificatePdf(data) {
@@ -1623,7 +1754,7 @@
       }
       output.push(rest);
     });
-    return output.slice(0, 48);
+    return output;
   }
 
   function importBackup(event) {
@@ -1675,7 +1806,12 @@
   }
 
   function csvRow(row) {
-    return row.map((cell) => `"${String(cell || "").replaceAll('"', '""')}"`).join(",");
+    return row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";");
+  }
+
+  function reportFilename(extension) {
+    const safeName = (active.name || DEFAULT_TOURNAMENT_NAME).toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "beachturnier";
+    return `${safeName}-export.${extension}`;
   }
 
   function setText(set) {
@@ -1700,8 +1836,11 @@
     const link = document.createElement("a");
     link.href = url;
     link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function emptyMessage(message) {

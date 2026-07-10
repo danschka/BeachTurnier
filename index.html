@@ -12,7 +12,7 @@
   <body>
     <header class="app-header">
       <div class="brand-block">
-        <p class="eyebrow" id="formatEyebrow">Beachvolleyball · 12 Spieler · 6 Teams</p>
+        <p class="eyebrow" id="formatEyebrow">Volleyball - 12 Spieler - 6 Teams - 2 Spielfelder</p>
         <div class="brand-title">
           <img
             id="tournamentLogo"
@@ -120,8 +120,12 @@
               </div>
               <div class="format-grid">
                 <label>
-                  Teams
-                  <input id="teamCountInput" type="number" min="2" max="32" step="1">
+                  Spielfelder
+                  <input id="courtCountInput" type="number" min="1" max="16" step="1">
+                </label>
+                <label>
+                  Spieler
+                  <input id="playerCountInput" type="number" min="2" max="256" step="1">
                 </label>
                 <label>
                   Spieler pro Team
